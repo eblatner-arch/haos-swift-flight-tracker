@@ -16,6 +16,7 @@ struct FlightDetail: View {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .onAppear { store.seedDetail(id) }
         .task(id: id) {
             await store.loadDetail(id)
             var n = 0

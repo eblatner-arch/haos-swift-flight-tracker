@@ -199,6 +199,14 @@ final class Store {
         if liveries.isNull, let r = try? await API.get("api/liveries") { liveries = r.0 }
     }
 
+    /// the phone's last copy of a flight's page, shown while the fresh one loads
+    func seedDetail(_ id: String) {
+        guard details[id] == nil, let j = fromDisk("api/leg/\(id)") else { return }
+        // only if it's no older than the list's copy
+        if let l = legs.first(where: { $0.id == id }), (l.j["updated"].double ?? 0) > (j["updated"].double ?? 0) + 120 { return }
+        details[id] = Leg(j: j)
+    }
+
     func loadDetail(_ id: String) async {
         guard let r = try? await API.get("api/leg/\(id)" + (logAll.contains(id) ? "?log=1" : "")) else { return }
         let fromPhone = r.1
