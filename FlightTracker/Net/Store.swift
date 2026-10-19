@@ -67,7 +67,7 @@ final class Store {
     var airportsStatus: JSON = .null
 
     func loadRotation(_ id: String) async {
-        if let r = try? await API.get("api/leg/\(id)?rotation") { rotations[id] = r.0["rotation"].array; details[id] = Leg(j: r.0) }
+        if let r = try? await API.get("api/leg/\(id)?rotation=1") { rotations[id] = r.0["rotation"].array; details[id] = Leg(j: r.0) }
     }
 
     /// en-route center boundaries (for the FAA program maps): {ZNY: {rings: [[[lat, lon]...]]}}
@@ -125,6 +125,28 @@ final class Store {
         return Leg(j: .object(o))
     }
 
+    /// flights whose whole Lookup Log was asked for
+    @ObservationIgnored var logAll = Set<String>()
+
+    /// a flight you added: take it off, or switch it between yours and a friend's
+    func removeFlight(_ id: String) async {
+        _ = try? await API.post("api/flights/remove", body: ["id": id])
+        details[id] = nil
+        await refresh()
+    }
+    func setKind(_ id: String, _ kind: String) async {
+        _ = try? await API.post("api/flights/kind", body: ["id": id, "kind": kind])
+        await refresh()
+        await loadDetail(id)
+    }
+    /// a flight from History, gone for good
+    func deleteHist(_ id: String) async -> Bool {
+        guard (try? await API.post("api/history/delete", body: ["id": id])) != nil else { return false }
+        histDetails[id] = nil
+        await loadPassport()
+        return true
+    }
+
     func loadHist(_ id: String) async {
         if let r = try? await API.get("api/history/\(id)") { histDetails[id] = r.0 }
     }
@@ -151,7 +173,7 @@ final class Store {
     }
 
     func loadDetail(_ id: String) async {
-        guard let r = try? await API.get("api/leg/\(id)") else { return }
+        guard let r = try? await API.get("api/leg/\(id)" + (logAll.contains(id) ? "?log=1" : "")) else { return }
         let fromPhone = r.1
         var leg = Leg(j: r.0)
         if let old = details[id], fromPhone { leg = old }   // a fresher one in memory beats the saved copy

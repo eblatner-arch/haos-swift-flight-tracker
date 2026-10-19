@@ -120,17 +120,27 @@ struct FlightMap: View {
         if !ib.isNull {
             let o = Airport(j: ib["origin"])
             let open = !["arrived", "cancelled", "diverted"].contains(ib["phase"].string ?? "") && leg.phase == "scheduled"
-            let itr = ib["track"].array.compactMap(coord)
+            let iph = ib["phase"].string ?? ""
+            var itr = ib["track"].array.compactMap(coord)
+            let ilive = LivePosition(leg.j["inbound_live"])
+            if let lv = ilive, ["airborne", "landed", "taxi_out"].contains(iph) { itr.append(lv.coordinate) }
             if itr.count > 1 { s.lines.append(.init(id: "itrack", coords: itr, color: .purple.opacity(open ? 0.9 : 0.35), width: 2.5, geodesic: false)) }
-            if open, let oc = o.coordinate, let a = leg.dep.coordinate {
-                s.lines.append(.init(id: "iplan", coords: [oc, a], color: .purple.opacity(0.45), width: 2, geodesic: true, dashed: true))
-                s.pins.append(.init(id: "i-" + o.code, label: o.code, coordinate: oc, color: .purple))
-                s.frame.append(oc)
+            // where it is now: the dashed line is only what's left to fly
+            let flying = iph == "airborne" || iph == "taxi_out"
+            let here = flying ? (ilive?.coordinate ?? itr.last) : nil
+            if open, let a = leg.dep.coordinate {
+                if let here {
+                    s.lines.append(.init(id: "iplan", coords: [here, a], color: .purple.opacity(0.45), width: 2, geodesic: true, dashed: true))
+                    s.frame.append(here)
+                } else if let oc = o.coordinate {
+                    s.lines.append(.init(id: "iplan", coords: [oc, a], color: .purple.opacity(0.45), width: 2, geodesic: true, dashed: true))
+                    s.pins.append(.init(id: "i-" + o.code, label: o.code, coordinate: oc, color: .purple))
+                    s.frame.append(oc)
+                }
             }
-            if let last = itr.last, ib["phase"].string == "airborne" {
-                let hdg = itr.count > 1 ? bearing(itr[itr.count - 2], last) : 0
-                s.planes.append(.init(id: "inbound", coordinate: last, heading: hdg, color: .purple, size: 20))
-                if open { s.frame.append(last) }
+            if let here, iph == "airborne" {
+                let hdg = ilive?.heading ?? (itr.count > 1 ? bearing(itr[itr.count - 2], here) : 0)
+                s.planes.append(.init(id: "inbound", coordinate: here, heading: hdg, color: .purple, size: 20))
             }
         }
         for ap in [leg.dep, leg.arr] {
@@ -143,15 +153,36 @@ struct FlightMap: View {
     /// an earlier leg of your airplane: its track (if the add-on sent one), its route, the airplane
     private func rotScene(_ leg: Leg, _ raw: JSON?) -> MapScene {
         var s = MapScene()
-        let tr = (raw ?? .null)["track"].array.compactMap(coord)
+        var tr = (raw ?? .null)["track"].array.compactMap(coord)
+        let ph = leg.phase
+        let flying = ["airborne", "taxi_out"].contains(ph)
+        if let lv = leg.live, flying || ph == "landed" { tr.append(lv.coordinate) }
+        let here = flying ? (leg.live?.coordinate ?? tr.last) : nil
         let gc = straight(leg)
-        if gc.count == 2 { s.lines.append(.init(id: "plan", coords: gc, color: Th.violet.opacity(0.6), width: 2, geodesic: true, dashed: true)); s.frame += gc }
+        if gc.count == 2 {
+            s.frame += gc
+            // the dashed line is what's left to fly: all of it before takeoff, none once it's down
+            if let here { s.lines.append(.init(id: "plan", coords: [here, gc[1]], color: Th.violet.opacity(0.6), width: 2, geodesic: true, dashed: true)) }
+            else if tr.count < 2 { s.lines.append(.init(id: "plan", coords: gc, color: Th.violet.opacity(0.6), width: 2, geodesic: true, dashed: true)) }
+        }
         if tr.count > 1 { s.lines.append(.init(id: "track", coords: tr, color: Th.violet, width: 3.5, geodesic: false)) }
         for ap in [leg.dep, leg.arr] { if let c = ap.coordinate { s.pins.append(.init(id: ap.code, label: "\(ap.city)  \(ap.code)", coordinate: c, color: Th.violet)) } }
-        if leg.phase == "airborne", let last = tr.last {
-            s.planes.append(.init(id: "p", coordinate: leg.live?.coordinate ?? last, heading: leg.live?.heading ?? (tr.count > 1 ? bearing(tr[tr.count - 2], last) : 0), color: Th.violet, size: 26))
+        if let here {
+            let hdg = leg.live?.heading ?? (tr.count > 1 ? bearing(tr[tr.count - 2], here) : gc.count == 2 ? bearing(gc[0], gc[1]) : 0)
+            s.planes.append(.init(id: "p", coordinate: here, heading: hdg, color: Th.violet, size: 26))
+        } else if ph == "airborne", gc.count == 2, let est = estimatedPosition(leg, gc) {
+            s.planes.append(.init(id: "p", coordinate: est.0, heading: est.1, color: Th.violet, size: 26))
         }
         return s
+    }
+
+    /// no track or live position yet: where it should be, along the great circle by time flown
+    private func estimatedPosition(_ leg: Leg, _ gc: [CLLocationCoordinate2D]) -> (CLLocationCoordinate2D, Double)? {
+        guard let off = leg.off.best ?? leg.out.best, let on = leg.on.best ?? leg.inn.best, on > off else { return nil }
+        let f = max(0, min(1, Date().timeIntervalSince(off) / on.timeIntervalSince(off)))
+        let p = CLLocationCoordinate2D(latitude: gc[0].latitude + (gc[1].latitude - gc[0].latitude) * f,
+                                       longitude: gc[0].longitude + (gc[1].longitude - gc[0].longitude) * f)
+        return (p, bearing(gc[0], gc[1]))
     }
 
     /// FAA status: every airport with an issue, red for programs and stops, amber for delays

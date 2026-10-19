@@ -64,6 +64,10 @@ struct FlightPage: View {
     let refreshID: String?
     let inboundBase: (String, Int)
     @State private var refreshing = false
+    @State private var confirmRemove = false
+    @State private var askAero = false
+    @State private var aeroText: String?
+    private var isAircraft: Bool { leg.id.contains("~") }
 
     var body: some View {
                 ScrollView {
@@ -93,6 +97,25 @@ struct FlightPage: View {
                             if let u = faURL(leg) { Link(destination: u) { pillLabel("FlightAware ↗") } }
                         }
                         .padding(.top, 4)
+                        if !isAircraft {
+                            FlowLayout(spacing: 8) {
+                                if store.stateJ["aeroapi"].bool {
+                                    pill(aeroText ?? "Check AeroAPI now") { askAero = true }
+                                }
+                                if leg.j["manual"].bool || leg.extra {
+                                    let mine = leg.j["kind"].string == "manual"
+                                    pill(mine ? "Make it a friend's flight" : "It's my flight") {
+                                        Task { await store.setKind(leg.id, mine ? "friend" : "manual") }
+                                    }
+                                    Button { confirmRemove = true } label: {
+                                        Text("Remove").font(.system(size: 16, weight: .semibold)).foregroundStyle(Th.red)
+                                            .padding(.horizontal, 15).padding(.vertical, 10)
+                                            .background(Th.red.opacity(0.15), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
                         Fold(title: "Flight Details") { DetailsKV(leg: leg) }
                         let metars = [leg.dep, leg.arr].compactMap { ap in leg.weather(ap)["raw"].string.map { (ap.code, $0) } }
                         if !metars.isEmpty {
@@ -103,8 +126,31 @@ struct FlightPage: View {
                                 .card()
                             }
                         }
+                        let minor = nasGroups([leg]).filter { !$0.major }
+                        if !minor.isEmpty {
+                            Fold(title: "Other NAS Items") { VStack(spacing: 10) { ForEach(minor) { NasAlertCard(g: $0) } } }
+                        }
                         let al = leg.j["alerts"].array
                         if !al.isEmpty { Fold(title: "Alerts for This Flight") { AlertsCard(list: al, open: { _ in }) } }
+                        if isAircraft {
+                            let parts = leg.id.split(separator: "~"), pid = String(parts[0]), n = Int(parts.last ?? "0") ?? 0
+                            let log = LogEntry.inbound(raw: store.rotations[pid]?[safe: n] ?? .null, n: n, parent: store.leg(pid))
+                            if !log.isEmpty { LookupLog(entries: log) }
+                        } else {
+                            let log = LogEntry.of(leg)
+                            if !log.isEmpty {
+                                LookupLog(entries: log, more: leg.j["history_more"].int ?? 0) {
+                                    store.logAll.insert(leg.id)
+                                    await store.loadDetail(leg.id)
+                                }
+                            }
+                            if leg.j["shot"].bool || leg.j["shot"].string != nil, let u = API.url("api/shot/\(leg.id).png?t=\(Int(leg.j["updated"].double ?? 0))") {
+                                Fold(title: "Latest Screenshot") {
+                                    AsyncImage(url: u) { img in img.resizable().scaledToFit() } placeholder: { ProgressView().frame(maxWidth: .infinity, minHeight: 120) }
+                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                }
+                            }
+                        }
                         if let u = store.updated {
                             Text("Updated \(Fmt.ago(u)) · \(leg.j["source"].string ?? "")").font(.caption).foregroundStyle(Th.faint)
                         }
@@ -113,6 +159,27 @@ struct FlightPage: View {
                     .padding(.bottom, 100)
             .sheetScroll()
                 }
+                .confirmationDialog("Remove \(leg.display)?", isPresented: $confirmRemove, titleVisibility: .visible) {
+                    Button("Remove", role: .destructive) { Task { await store.removeFlight(leg.id); nav.back() } }
+                }
+                .alert("Ask AeroAPI now?", isPresented: $askAero) {
+                    Button("Ask") { Task { await aero() } }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("It's one paid query (about half a cent), counted in your monthly budget.")
+                }
+    }
+
+    private func aero() async {
+        aeroText = "Asking AeroAPI…"
+        do {
+            let d = try await API.post("api/aero/\(leg.id)")
+            aeroText = "AeroAPI: " + (d["status"].string ?? "answered") + (d["tail"].string.map { " · " + $0 } ?? "")
+            try? await Task.sleep(for: .seconds(1.5))
+            await store.loadDetail(leg.id)
+        } catch {
+            aeroText = "AeroAPI: \(error.localizedDescription)"
+        }
     }
 
     private func faURL(_ leg: Leg) -> URL? {
@@ -396,10 +463,19 @@ struct InboundCard: View {
                 }
                 .padding(12)
                 .background(Th.card2, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                ForEach(Array(rot.prefix(3).enumerated()), id: \.offset) { i, r in
-                    Button { nav.push(.aircraft(base.0, base.1 + i)) } label: { InboundLegRow(r: r).contentShape(Rectangle()) }.buttonStyle(.plain)
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(rot.prefix(3).enumerated()), id: \.offset) { i, r in
+                        Button { nav.push(.aircraft(base.0, base.1 + i)) } label: { InboundLegRow(r: r).contentShape(Rectangle()) }.buttonStyle(.plain)
+                    }
+                    if let last = rot.prefix(3).last { TimelineNode(code: Airport(j: last["origin"]).code, color: phaseColor(last["phase"].string)) }
                 }
-                if let last = rot.prefix(3).last { TimelineNode(code: Airport(j: last["origin"]).code) }
+                // the line joining the stops, from this flight down through the airplane's day
+                .background(alignment: .topLeading) {
+                    GeometryReader { g in
+                        Rectangle().fill(Th.muted.opacity(0.55)).frame(width: 2, height: max(0, g.size.height - 30))
+                            .offset(x: 12.5, y: 15)
+                    }
+                }
                 if rot.count > 3 {
                     Button { nav.push(.aircraft(base.0, base.1 + 3)) } label: {
                         HStack(spacing: 10) {
@@ -465,11 +541,21 @@ private struct TurnBar: View {
     }
 }
 
+/// green while that leg is flying or done, grey before it leaves
+func phaseColor(_ ph: String?) -> Color {
+    switch ph ?? "" {
+    case "airborne", "landed", "arrived", "taxi_out": return Th.green
+    case "cancelled", "diverted": return Th.red
+    default: return Th.muted
+    }
+}
+
 private struct TimelineNode: View {
     let code: String
+    var color: Color = Th.muted
     var body: some View {
         HStack(spacing: 12) {
-            Circle().fill(Th.muted).frame(width: 11, height: 11)
+            Circle().fill(color).frame(width: 11, height: 11).overlay(Circle().stroke(Th.card, lineWidth: 2.5))
             Text(code).font(.system(size: 14, weight: .semibold)).foregroundStyle(Th.muted)
         }
         .padding(.leading, 8).padding(.vertical, 6)
@@ -483,7 +569,7 @@ private struct InboundLegRow: View {
         let rin = Times(rt["in"]), rm = rin.lateMinutes
         let rk = !rt["in"]["actual"].isNull || !rt["in"]["estimated"].isNull
         VStack(alignment: .leading, spacing: 0) {
-            TimelineNode(code: d.code)
+            TimelineNode(code: d.code, color: ["arrived", "landed"].contains(r["phase"].string ?? "") ? Th.green : Th.muted)
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(o.city) to \(d.city)").font(.system(size: 16, weight: .semibold))
