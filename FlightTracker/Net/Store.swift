@@ -7,6 +7,9 @@ import Observation
 @MainActor
 final class Store {
     var legs: [Leg] = []
+    /// the whole api/state answer (settings, version, recent alerts, where alerts go)
+    var stateJ: JSON = .null
+    var minTurn: Int { stateJ["settings"]["min_turn_minutes"].int ?? 30 }
     var details: [String: Leg] = [:]
     var offline = false
     var error: String?
@@ -51,6 +54,11 @@ final class Store {
         if let r = try? await API.get(path) { passport = r.0 }
     }
 
+    /// Ask the add-on to check a flight again now.
+    func refreshLeg(_ id: String) async {
+        _ = try? await API.post("api/refresh/\(id)")
+    }
+
     func loadHist(_ id: String) async {
         if let r = try? await API.get("api/history/\(id)") { histDetails[id] = r.0 }
     }
@@ -66,6 +74,7 @@ final class Store {
         do {
             let (j, fromPhone) = try await API.get("api/state")
             legs = j["legs"].array.map { Leg(j: $0) }
+            stateJ = j
             offline = fromPhone
             error = nil
             if !fromPhone { updated = Date() }
@@ -150,3 +159,35 @@ func acKey(_ type: String?, _ name: String?) -> String? {
     if t == "B737" || n.contains("737-7") { return "b737" }
     return nil
 }
+
+// ---------- FAA programs (ground stops, delay programs, closures, delay trends) ----------
+let majorKinds = ["gs", "closure", "gdp"]
+
+struct NasGroup: Identifiable {
+    let n: JSON
+    let tz: TimeZone
+    var uses: [(leg: Leg, impact: [JSON])]
+    var id: String { n["key"].string ?? UUID().uuidString }
+    var kind: String { n["kind"].string ?? "" }
+    var airport: String { n["airport"].string ?? "" }
+    var major: Bool { majorKinds.contains(kind) }
+    /// does it hold one of your flights (or its inbound)?
+    var holds: Bool { uses.contains { $0.impact.contains { !$0["hit"].isNull ? $0["hit"].bool : true } } }
+}
+
+/// One group per program, listing every flight it touches; programs first.
+func nasGroups(_ legs: [Leg]) -> [NasGroup] {
+    var order: [String] = [], by: [String: NasGroup] = [:]
+    for l in legs {
+        for n in l.nas {
+            let key = n["key"].string ?? "\(n["airport"].string ?? "")-\(n["kind"].string ?? "")"
+            let apt = n["airport"].string
+            let tz = apt == l.dep.code ? l.dep.timeZone : apt == l.arr.code ? l.arr.timeZone : .current
+            if by[key] == nil { by[key] = NasGroup(n: n, tz: tz, uses: []); order.append(key) }
+            by[key]?.uses.append((l, n["impact"].array))
+        }
+    }
+    let rank: (NasGroup) -> Int = { majorKinds.firstIndex(of: $0.kind) ?? 9 }
+    return order.compactMap { by[$0] }.sorted { rank($0) != rank($1) ? rank($0) < rank($1) : $0.airport < $1.airport }
+}
+

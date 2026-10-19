@@ -40,6 +40,7 @@ struct RootView: View {
     var body: some View {
         FlightMap(route: path.last, tab: tab)
             .ignoresSafeArea()
+            .overlay(alignment: .topTrailing) { MapButtons(route: path.last) }
             .sheet(isPresented: .constant(true)) {
                 NavigationStack(path: $path) {
                     HomeView(tab: $tab, showSettings: $showSettings, open: { path = [$0] })
@@ -50,6 +51,8 @@ struct RootView: View {
                             }
                         }
                 }
+                .overlay(alignment: .bottom) { TabBar(tab: Binding(get: { tab }, set: { t in tab = t; path = [] })) }
+                .presentationBackground(Th.sheet)
                 .presentationDetents([.height(96), .fraction(0.45), .large], selection: $detent)
                 .presentationBackgroundInteraction(.enabled(upThrough: .fraction(0.45)))
                 .presentationCornerRadius(26)
@@ -88,3 +91,33 @@ struct RootView: View {
             .onChange(of: tab) { _, _ in store.focus(.fit) }
     }
 }
+
+/// The round buttons on the right of the map, like the web app's: center on the routes, and on a
+/// flight, zoom to the airplane or either airport.
+struct MapButtons: View {
+    @Environment(Store.self) private var store
+    let route: Route?
+
+    var body: some View {
+        VStack(spacing: 10) {
+            button("location.fill") { store.focus(.fit) }
+            if case .leg(let id)? = route, let leg = store.leg(id) {
+                if leg.position != nil { button("airplane") { store.focus(.plane) } }
+                if let c = leg.dep.coordinate { button("airplane.departure") { store.focus(.area(lat: c.latitude, lon: c.longitude, km: 2.2)) } }
+                if let c = leg.arr.coordinate { button("airplane.arrival") { store.focus(.area(lat: c.latitude, lon: c.longitude, km: 2.2)) } }
+            }
+        }
+        .padding(.trailing, 12)
+        .padding(.top, 60)
+    }
+
+    private func button(_ sym: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: sym).font(.system(size: 18, weight: .semibold)).foregroundStyle(.white)
+                .frame(width: 46, height: 46)
+                .background(Color(hex: 0x24242A, alpha: 0.93), in: Circle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+

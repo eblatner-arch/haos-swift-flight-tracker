@@ -59,6 +59,21 @@ enum API {
     }
 }
 
+extension API {
+    /// POST (an action, like refreshing a flight). -> the answer, or throws.
+    static func post(_ path: String, body: [String: Any] = [:]) async throws -> JSON {
+        guard let u = url(path) else { throw Failure.noServer }
+        var req = URLRequest(url: u, timeoutInterval: 20)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, resp) = try await session.data(for: req)
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(code) else { throw Failure.http(code) }
+        return (try? JSON.parse(data)) ?? .null
+    }
+}
+
 /// The phone's copies of the add-on's answers (Library/Caches/api).
 enum Disk {
     static let dir: URL = {

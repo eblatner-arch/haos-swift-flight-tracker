@@ -3,6 +3,7 @@ import SwiftUI
 /// A flight from your Passport: the route flown, the four times, the airplane.
 struct HistFlightView: View {
     @Environment(Store.self) private var store
+    @Environment(\.dismiss) private var dismiss
     let id: String
 
     var body: some View {
@@ -12,15 +13,12 @@ struct HistFlightView: View {
                 let t = f["times"]
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("\(f["display"].string ?? "Flight") · \(f["date"].string ?? "")").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                            Text("\(a.city) to \(b.city)").font(.title3.weight(.bold))
-                        }
-                        .padding(.top, 6)
-                        if f["cancelled"].bool { Banner(status: StatusLine.fixed("Cancelled", "", .red)) }
-                        else if let d = f["diverted_to"].string { Banner(status: StatusLine.fixed("Diverted to \(d)", "", .red)) }
+                        DetailHeader(badge: f["airline"].string == "UAL" ? "UA" : (f["airline"].string ?? ""),
+                                     sub: "\(f["display"].string ?? "Flight") • \(f["date"].string ?? "")", title: "\(a.city) to \(b.city)") { dismiss() }
+                        if f["cancelled"].bool { StatusBanner(status: StatusLine.fixed("Cancelled", "", .red)) }
+                        else if let d = f["diverted_to"].string { StatusBanner(status: StatusLine.fixed("Diverted to \(d)", "", .red)) }
                         else if let m = f["arr_delay"].int {
-                            Banner(status: StatusLine.fixed(abs(m) < 5 ? "Arrived on time" : m > 0 ? "Arrived \(Fmt.span(Double(m * 60))) late" : "Arrived \(Fmt.span(Double(-m * 60))) early", "", Fmt.lateColor(m)))
+                            StatusBanner(status: StatusLine.fixed(abs(m) < 5 ? "Arrived on time" : m > 0 ? "Arrived \(Fmt.span(Double(m * 60))) late" : "Arrived \(Fmt.span(Double(-m * 60))) early", "", Fmt.lateColor(m)))
                         }
                         VStack(spacing: 8) {
                             row("Gate departure", t["out"], a.timeZone)
@@ -29,7 +27,7 @@ struct HistFlightView: View {
                             row("Gate arrival", t["in"], b.timeZone)
                         }
                         .padding(14)
-                        .background(Color.card, in: RoundedRectangle(cornerRadius: 16))
+                        .background(Th.card, in: RoundedRectangle(cornerRadius: Th.radius, style: .continuous))
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Details").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                             kv("Gates", [f["dep_gate"].string, f["arr_gate"].string].map { $0 ?? "–" }.joined(separator: " → "))
@@ -40,16 +38,16 @@ struct HistFlightView: View {
                         }
                         .padding(14)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.card, in: RoundedRectangle(cornerRadius: 16))
+                        .background(Th.card, in: RoundedRectangle(cornerRadius: Th.radius, style: .continuous))
                     }
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 30)
+                    .padding(.bottom, 100)
                 }
             } else {
                 ProgressView()
             }
         }
-        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .navigationBar)
         .task(id: id) { await store.loadHist(id) }
     }
 

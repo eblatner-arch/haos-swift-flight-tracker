@@ -24,11 +24,37 @@ enum Fmt {
         return f.string(from: d)
     }
 
-    /// "1h 9m"
+    /// "1h 9m", "2d 3h"
     static func span(_ seconds: Double) -> String {
-        let m = Int((abs(seconds) / 60).rounded())
-        if m < 60 { return "\(m)m" }
-        return "\(m / 60)h \(m % 60)m"
+        var m = Int((abs(seconds) / 60).rounded())
+        let d = m / 1440; m -= d * 1440
+        let h = m / 60; m -= h * 60
+        return d > 0 ? "\(d)d \(h)h" : h > 0 ? "\(h)h \(m)m" : "\(m)m"
+    }
+
+    /// "On Time", "40m Late", "5m Early", or "Scheduled" when nothing is known yet
+    static func lateWord(_ m: Int?, known: Bool = true) -> String {
+        guard known, let m else { return "Scheduled" }
+        if abs(m) < 5 { return "On Time" }
+        return m > 0 ? "\(span(Double(m * 60))) Late" : "\(span(Double(-m * 60))) Early"
+    }
+
+    static func lateLower(_ m: Int?) -> String {
+        guard let m, abs(m) >= 5 else { return "on time" }
+        return m > 0 ? "\(span(Double(m * 60))) late" : "\(span(Double(-m * 60))) early"
+    }
+
+    /// "Thu, Oct 22" in a time zone
+    static func dateShort(_ d: Date?, _ tz: TimeZone) -> String { day(d, tz) }
+
+    /// "3 min ago", "2 h ago"
+    static func ago(_ d: Date?) -> String {
+        guard let d else { return "" }
+        let s = -d.timeIntervalSinceNow
+        if s < 60 { return "just now" }
+        if s < 3600 { return "\(Int(s / 60)) min ago" }
+        if s < 86400 { return "\(Int(s / 3600)) h ago" }
+        return "\(Int(s / 86400)) d ago"
     }
 
     /// "40m late" / "On time" / "5m early"

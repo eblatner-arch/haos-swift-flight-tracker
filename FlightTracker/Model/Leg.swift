@@ -7,7 +7,18 @@ struct Airport: Equatable {
     let j: JSON
 
     var code: String { j["iata"].string ?? j["icao"].string ?? "?" }
-    var city: String { j["city"].string ?? j["name"].string ?? code }
+    var city: String {
+        if let c = j["city"].string { return c.replacingOccurrences(of: #",\s*[A-Z]{2}$"#, with: "", options: .regularExpression) }
+        let n = (j["name"].string ?? "").replacingOccurrences(of: #"\b(International|Intl\.?|Regional|Municipal|Airport|Field|Int'l)\b"#, with: "", options: [.regularExpression, .caseInsensitive])
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces)
+        return n.isEmpty ? code : n
+    }
+    /// "Nashville Intl."
+    var short: String {
+        guard let n = j["name"].string, !n.isEmpty else { return city }
+        return n.replacingOccurrences(of: "International", with: "Intl.", options: .caseInsensitive)
+            .replacingOccurrences(of: #"\s*Airport$"#, with: "", options: [.regularExpression, .caseInsensitive]).trimmingCharacters(in: .whitespaces)
+    }
     var name: String { j["name"].string ?? city }
     var coordinate: CLLocationCoordinate2D? {
         guard let la = j["lat"].double, let lo = j["lon"].double else { return nil }
@@ -160,6 +171,56 @@ struct Leg: Identifiable, Equatable {
         return .null
     }
     var routeStats: JSON { j["route_stats"] }
+    var outKnown: Bool { out.actual != nil || out.estimated != nil }
+    var inKnown: Bool { inn.actual != nil || inn.estimated != nil }
+    var extra: Bool { j["extra"].bool }
+    var kindTag: String? { extra ? (j["kind"].string == "manual" ? "MANUAL" : "FRIEND") : nil }
+    var watching: Bool { j["watching"].bool }
+    /// a problem worth a line under the row (delays and FAA items have their own places)
+    var warning: JSON? { j["problems"].array.first { !$0["nas"].bool && !$0["delay"].bool } }
+
+    /// The row's status on the right: "Landing in 21m", "Departs in 2h 13m", "Thu, Oct 22"...
+    var rowStatus: (String, Color?) {
+        let now = Date(), am = inn.lateMinutes, dm = out.lateMinutes
+        switch phase {
+        case "airborne":
+            let at = on.best ?? inn.best
+            return (at.map { $0 > now ? "Landing in \(Fmt.span($0.timeIntervalSince(now)))" : "Landing now" } ?? "In the air", Th.lateTone(am, known: inKnown))
+        case "taxi_out": return ("Taxiing out", Th.lateTone(dm))
+        case "landed":
+            if let i = inn.best, i > now { return ("At gate in \(Fmt.span(i.timeIntervalSince(now)))", Th.lateTone(am)) }
+            return ("Landed", Th.lateTone(am))
+        case "arrived": return ("Arrived \(Fmt.lateLower(am))", Th.tone(am))
+        case "cancelled": return ("Cancelled", Th.red)
+        case "diverted": return ("Diverted to \(arr.code)", Th.red)
+        default:
+            if notFound { return (status.isEmpty ? "Not found" : status, Th.amber) }
+            let late = (dm ?? 0) >= 5 ? Th.tone(dm) : nil
+            if let o = out.best, o > now, o.timeIntervalSince(now) < 12 * 3600 { return ("Departs in \(Fmt.span(o.timeIntervalSince(now)))", late) }
+            return (Fmt.day(out.best, dep.timeZone), late)
+        }
+    }
+
+    enum When { case icon(String, String, Color), count(Int, String) }
+    /// The column left of the row: an icon (in the air, arrived...) or how long until departure.
+    var when: When {
+        switch phase {
+        case "airborne": return .icon("airplane.arrival", "IN AIR", Th.route)
+        case "taxi_out": return .icon("airplane.departure", "TAXIING", Th.route)
+        case "landed": return .icon("airplane.arrival", "LANDED", Th.route)
+        case "cancelled": return .icon("xmark", "CANCELLED", Th.red)
+        case "diverted": return .icon("exclamationmark.triangle.fill", "DIVERTED", Th.red)
+        default: break
+        }
+        if finished || phase == "arrived" { return .icon("checkmark", "ARRIVED", Th.muted) }
+        let s = (out.best ?? Date()).timeIntervalSinceNow
+        if s <= 0 { return .icon("airplane.departure", "BOARDING", Th.route) }
+        if s < 3600 { let n = max(1, Int((s / 60).rounded())); return .count(n, n == 1 ? "MIN" : "MINS") }
+        if s < 18 * 3600 { let n = Int((s / 3600).rounded()); return .count(n, n == 1 ? "HOUR" : "HOURS") }
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = dep.timeZone
+        let n = max(1, cal.dateComponents([.day], from: cal.startOfDay(for: Date()), to: cal.startOfDay(for: out.best ?? Date())).day ?? 1)
+        return .count(n, n == 1 ? "DAY" : "DAYS")
+    }
     var notFound: Bool { status.lowercased().contains("not found") }
 }
 
