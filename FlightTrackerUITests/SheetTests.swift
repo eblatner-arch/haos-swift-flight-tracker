@@ -76,4 +76,14 @@ final class SheetTests: XCTestCase {
             note("no GDP card")
         }
     }
+
+    func testProgramMap() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-server", "http://localhost:8765/", "-openNas", "EWR|gdp|1"]
+        app.launch()
+        sleep(12)
+        shot("u7-program-map")
+        note("program map opened directly")
+    }
 }
+

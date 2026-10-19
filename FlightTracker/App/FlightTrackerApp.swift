@@ -82,6 +82,7 @@ struct RootView: View {
             // testing: launched with -openLeg <id> opens that flight
             if let id = UserDefaults.standard.string(forKey: "openLeg"), !id.isEmpty { nav.path = [.leg(id)] }
             if UserDefaults.standard.string(forKey: "openTab") == "passport" { tab = .passport }
+            if let k = UserDefaults.standard.string(forKey: "openNas"), !k.isEmpty { nav.path = [.nas(k)] }
             if UserDefaults.standard.bool(forKey: "bigSheet") { stop = .full }
             while !Task.isCancelled {
                 await store.refresh()
