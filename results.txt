@@ -1,0 +1,6 @@
+start: title at 435 of 956
+after swipe up: 102 (moved 333)
+after scroll at full: title -269
+after pull down: 800
+opened a flight
+no Map › button
