@@ -381,69 +381,49 @@ struct FlightMap: View {
     }
     }
 
+    /// the diagrams of this page's airports, flattened: (key, shape)
+    private var shownLayouts: [AirportLayout] { camDist < 40_000 ? layoutCodes.compactMap { store.layouts[$0] } : [] }
+
     @MapContentBuilder private var layoutContent: some MapContent {
-    // airport diagrams, once you're close enough to see them
-    if camDist < 40_000 {
-        ForEach(layoutCodes, id: \.self) { code in
-            if let L = store.layouts[code] {
-                ForEach(Array(L.terminals.enumerated()), id: \.offset) { _, r in
-                    MapPolygon(coordinates: r).foregroundStyle(Color(hex: 0xC8CDD8).opacity(0.16)).stroke(Color(hex: 0xC8CDD8).opacity(0.5), lineWidth: 1)
-                }
-                ForEach(Array(L.taxiways.enumerated()), id: \.offset) { _, l in
-                    MapPolyline(coordinates: l).stroke(.white.opacity(0.14), style: StrokeStyle(lineWidth: max(1.5, 23 * pointsPerMeter), lineCap: .round, lineJoin: .round))
-                }
-                if camDist < 6_000 {
-                    ForEach(Array(L.taxiways.enumerated()), id: \.offset) { _, l in
-                        MapPolyline(coordinates: l).stroke(Color(hex: 0xF6C445).opacity(0.5), lineWidth: 1)
-                    }
-                }
-                ForEach(Array(L.runways.enumerated()), id: \.offset) { _, l in
-                    MapPolyline(coordinates: l).stroke(.white.opacity(0.24), style: StrokeStyle(lineWidth: max(3, 45 * pointsPerMeter), lineCap: .butt))
-                    MapPolyline(coordinates: l).stroke(.white.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [8, 8]))
-                }
-                ForEach(layoutLabels(L)) { lb in
-                    Annotation("", coordinate: lb.at, anchor: .center) {
-                        Text(lb.text)
-                            .font(.system(size: lb.kind == .runway ? 13 : lb.kind == .terminal ? 12 : 11, weight: lb.kind == .gate ? .semibold : .heavy))
-                            .foregroundStyle(lb.kind == .taxiway ? Color(hex: 0xF6C445) : lb.kind == .gate ? Color(hex: 0x9FC2FF) : .white)
-                            .padding(.horizontal, lb.kind == .runway ? 5 : 0).padding(.vertical, lb.kind == .runway ? 1 : 0)
-                            .background(lb.kind == .runway ? Color.black.opacity(0.55) : .clear, in: RoundedRectangle(cornerRadius: 4))
-                            .shadow(color: .black, radius: 1.5)
-                    }
-                }
-            }
+        let Ls = shownLayouts
+        let terms: [[CLLocationCoordinate2D]] = Ls.flatMap(\.terminals)
+        let twys: [[CLLocationCoordinate2D]] = Ls.flatMap(\.taxiways)
+        let rwys: [[CLLocationCoordinate2D]] = Ls.flatMap(\.runways)
+        let labels: [AirportLayout.Label] = Ls.flatMap { layoutLabels($0) }
+        let twW: CGFloat = max(1.5, 23 * pointsPerMeter), rwW: CGFloat = max(3, 45 * pointsPerMeter)
+        let fillC = Color(hex: 0xC8CDD8)
+        ForEach(terms.indices, id: \.self) { i in
+            MapPolygon(coordinates: terms[i]).foregroundStyle(fillC.opacity(0.16)).stroke(fillC.opacity(0.5), lineWidth: 1)
+        }
+        ForEach(twys.indices, id: \.self) { i in
+            MapPolyline(coordinates: twys[i]).stroke(Color.white.opacity(0.14), style: StrokeStyle(lineWidth: twW, lineCap: .round, lineJoin: .round))
+        }
+        ForEach(rwys.indices, id: \.self) { i in
+            MapPolyline(coordinates: rwys[i]).stroke(Color.white.opacity(0.24), style: StrokeStyle(lineWidth: rwW, lineCap: .butt))
+        }
+        ForEach(rwys.indices, id: \.self) { i in
+            MapPolyline(coordinates: rwys[i]).stroke(Color.white.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [8, 8]))
+        }
+        ForEach(labels.indices, id: \.self) { i in
+            Annotation("", coordinate: labels[i].at, anchor: .center) { LayoutLabelView(label: labels[i]) }
+                .annotationTitles(.hidden)
         }
     }
+
+    /// surface targets with a position
+    private var surfTargets: [(CLLocationCoordinate2D, JSON)] {
+        camDist < 25_000 ? surf.compactMap { t in
+            guard let la = t["lat"].double, let lo = t["lon"].double else { return nil }
+            return (CLLocationCoordinate2D(latitude: la, longitude: lo), t)
+        } : []
     }
 
     @MapContentBuilder private var surfaceContent: some MapContent {
-    // everything moving on the ground there: airplanes with transponders, yours highlighted
-    if camDist < 25_000 {
-        ForEach(Array(surf.enumerated()), id: \.offset) { _, t in
-            if let la = t["lat"].double, let lo = t["lon"].double {
-                let mine = t["mine"].bool
-                Annotation("", coordinate: CLLocationCoordinate2D(latitude: la, longitude: lo), anchor: .center) {
-                    if !mine && (t["kind"].string == "vehicle" || (t["cs"].isNull && t["type"].isNull)) {
-                        Circle().fill(Color(white: 0.56)).frame(width: 5, height: 5)
-                    } else {
-                        ZStack(alignment: .leading) {
-                            Image(systemName: "airplane")
-                                .font(.system(size: mine ? 20 : 13, weight: .bold))
-                                .foregroundStyle(mine ? Color.route : .white.opacity(0.9))
-                                .shadow(color: .black.opacity(0.7), radius: 2)
-                                .rotationEffect(.degrees((t["hdg"].double ?? 0) - 90))
-                            if mine || camDist < 4_000, let cs = t["cs"].string {
-                                Text(cs).font(.system(size: mine ? 12 : 10, weight: .bold)).foregroundStyle(.white)
-                                    .padding(.horizontal, 4).padding(.vertical, 1)
-                                    .background(mine ? Color.route : Color.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 4))
-                                    .offset(x: mine ? 18 : 12)
-                                    .fixedSize()
-                            }
-                        }
-                    }
-                }
+        let list = surfTargets
+        let close = camDist < 4_000
+        ForEach(list.indices, id: \.self) { i in
+            Annotation("", coordinate: list[i].0, anchor: .center) { SurfaceTargetView(t: list[i].1, close: close) }
                 .annotationTitles(.hidden)
-            }
         }
     }
     }
@@ -559,3 +539,46 @@ let ctrLabelAt: [String: (Double, Double)] = [
     "ZJX": (31.2, -82.6), "ZBW": (43.6, -71.8), "ZHU": (30.6, -93.8), "ZDC": (37.6, -77.8),
 ]
 
+
+/// a runway, taxiway, terminal or gate name on the airport diagram
+struct LayoutLabelView: View {
+    let label: AirportLayout.Label
+    var body: some View {
+        let k = label.kind
+        let size: CGFloat = k == .runway ? 13 : k == .terminal ? 12 : 11
+        let color: Color = k == .taxiway ? Color(hex: 0xF6C445) : k == .gate ? Color(hex: 0x9FC2FF) : .white
+        Text(label.text)
+            .font(.system(size: size, weight: k == .gate ? .semibold : .heavy))
+            .foregroundStyle(color)
+            .padding(.horizontal, k == .runway ? 5 : 0)
+            .background(k == .runway ? Color.black.opacity(0.55) : Color.clear, in: RoundedRectangle(cornerRadius: 4))
+            .shadow(color: .black, radius: 1.5)
+    }
+}
+
+/// one airplane (or vehicle) on the airport surface; yours in the route color with its callsign
+struct SurfaceTargetView: View {
+    let t: JSON
+    let close: Bool
+    var body: some View {
+        let mine = t["mine"].bool
+        if !mine && (t["kind"].string == "vehicle" || (t["cs"].isNull && t["type"].isNull)) {
+            Circle().fill(Color(white: 0.56)).frame(width: 5, height: 5)
+        } else {
+            ZStack(alignment: .leading) {
+                Image(systemName: "airplane")
+                    .font(.system(size: mine ? 20 : 13, weight: .bold))
+                    .foregroundStyle(mine ? Color.route : Color.white.opacity(0.9))
+                    .shadow(color: .black.opacity(0.7), radius: 2)
+                    .rotationEffect(.degrees((t["hdg"].double ?? 0) - 90))
+                if mine || close, let cs = t["cs"].string {
+                    Text(cs).font(.system(size: mine ? 12 : 10, weight: .bold)).foregroundStyle(.white)
+                        .padding(.horizontal, 4).padding(.vertical, 1)
+                        .background(mine ? Color.route : Color.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 4))
+                        .offset(x: mine ? 18 : 12)
+                        .fixedSize()
+                }
+            }
+        }
+    }
+}
