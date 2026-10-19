@@ -43,6 +43,8 @@ struct RootView: View {
             }
             .task {
                 if API.base == nil { showSettings = true }
+                // testing: launched with -openLeg <id> opens that flight
+                if let id = UserDefaults.standard.string(forKey: "openLeg"), !id.isEmpty { path = [id] }
                 while !Task.isCancelled {
                     await store.refresh()
                     try? await Task.sleep(for: .seconds(60))

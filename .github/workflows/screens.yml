@@ -38,9 +38,12 @@ jobs:
           xcrun simctl spawn "$UDID" defaults write com.ericsflights.flighttracker server "http://localhost:8765/"
           xcrun simctl launch "$UDID" com.ericsflights.flighttracker
           sleep 25 && xcrun simctl io "$UDID" screenshot shots/1-home.png
-          xcrun simctl openurl "$UDID" "flighttracker://leg/L1"
-          sleep 15 && xcrun simctl io "$UDID" screenshot shots/2-flight.png
-          sleep 10 && xcrun simctl io "$UDID" screenshot shots/3-flight-later.png
+          xcrun simctl terminate "$UDID" com.ericsflights.flighttracker
+          xcrun simctl launch "$UDID" com.ericsflights.flighttracker -openLeg L1
+          sleep 20 && xcrun simctl io "$UDID" screenshot shots/2-flight.png
+          xcrun simctl terminate "$UDID" com.ericsflights.flighttracker
+          xcrun simctl launch "$UDID" com.ericsflights.flighttracker -openLeg L2
+          sleep 20 && xcrun simctl io "$UDID" screenshot shots/3-flight-2.png
           tail -20 /tmp/mock.log > shots/mock.log || true
       - name: Push to the screens branch
         run: |
