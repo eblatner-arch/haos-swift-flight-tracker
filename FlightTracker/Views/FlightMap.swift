@@ -90,6 +90,19 @@ struct FlightMap: View {
         return homeScene()
     }
 
+    /// the rest of a route from where the airplane is: its position, then the points past the nearest one
+    private func remaining(_ route: [CLLocationCoordinate2D], from p: CLLocationCoordinate2D) -> [CLLocationCoordinate2D] {
+        let mp = MKMapPoint(p)
+        guard let i = route.indices.min(by: { MKMapPoint(route[$0]).distance(to: mp) < MKMapPoint(route[$1]).distance(to: mp) }) else { return route }
+        // if the nearest point is behind the airplane, start after it
+        var start = i
+        if i + 1 < route.count {
+            let a = MKMapPoint(route[i]), b = MKMapPoint(route[i + 1])
+            if b.distance(to: mp) < b.distance(to: a) { start = i + 1 }
+        }
+        return [p] + route[start...]
+    }
+
     private func straight(_ leg: Leg) -> [CLLocationCoordinate2D] {
         guard let a = leg.dep.coordinate, let b = leg.arr.coordinate else { return [] }
         return [a, b]
@@ -115,12 +128,18 @@ struct FlightMap: View {
     private func legScene(_ leg: Leg) -> MapScene {
         var s = MapScene()
         let planned = leg.plannedRoute
+        // the dashed line is only what's left to fly: from the airplane on, none once it's down
+        let down = ["landed", "arrived", "cancelled", "diverted"].contains(leg.phase)
+        let pos = ["airborne", "taxi_out"].contains(leg.phase) ? leg.position?.0 : nil
         if planned.count > 1 {
-            s.lines.append(.init(id: "plan", coords: planned, color: .route.opacity(0.8), width: 2, geodesic: false, dashed: true))
             s.frame += planned
+            if !down { s.lines.append(.init(id: "plan", coords: pos.map { remaining(planned, from: $0) } ?? planned, color: .route.opacity(0.8), width: 2, geodesic: false, dashed: true)) }
         } else if !straight(leg).isEmpty {
-            s.lines.append(.init(id: "plan", coords: straight(leg), color: .gray.opacity(0.8), width: 2, geodesic: true, dashed: true))
             s.frame += straight(leg)
+            if !down {
+                let gc = straight(leg)
+                s.lines.append(.init(id: "plan", coords: pos.map { [$0, gc[1]] } ?? gc, color: .gray.opacity(0.8), width: 2, geodesic: true, dashed: true))
+            }
         }
         var flown = leg.track.map(\.coordinate)
         if let lv = leg.live, ["airborne", "taxi_out", "landed"].contains(leg.phase) { flown.append(lv.coordinate) }
@@ -138,7 +157,8 @@ struct FlightMap: View {
             // where it is now: the dashed line is only what's left to fly
             let flying = iph == "airborne" || iph == "taxi_out"
             let here = flying ? (ilive?.coordinate ?? itr.last) : nil
-            if open, let a = leg.dep.coordinate {
+            let notYet = iph == "scheduled" || iph.isEmpty
+            if open, notYet || here != nil, let a = leg.dep.coordinate {
                 if let here {
                     s.lines.append(.init(id: "iplan", coords: [here, a], color: .purple.opacity(0.45), width: 2, geodesic: true, dashed: true))
                     s.frame.append(here)
