@@ -7,7 +7,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.10"
-    MARKETING_VERSION: "0.5.0"
+    MARKETING_VERSION: "0.6.0"
     CURRENT_PROJECT_VERSION: "1"
     DEVELOPMENT_TEAM: ""          # pick your team in Xcode (Signing & Capabilities)
     CODE_SIGN_STYLE: Automatic
@@ -38,3 +38,28 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: com.ericsflights.flighttracker
             CFBundleURLSchemes: [ericsflights]
+  FlightTrackerUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - FlightTrackerUITests
+    dependencies:
+      - target: FlightTracker
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ericsflights.flighttracker.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: FlightTracker
+schemes:
+  FlightTracker:
+    build:
+      targets:
+        FlightTracker: all
+        FlightTrackerUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - FlightTrackerUITests
+

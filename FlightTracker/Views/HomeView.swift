@@ -26,7 +26,7 @@ struct SheetTitle<Trailing: View>: View {
     @ViewBuilder var trailing: Trailing
     var body: some View {
         HStack(alignment: .center) {
-            Text(title).font(.system(size: 32, weight: .bold)).tracking(-0.5)
+            Text(title).font(.system(size: 32, weight: .bold)).tracking(-0.5).accessibilityIdentifier("sheetTitle")
             Spacer()
             trailing
         }
@@ -300,7 +300,10 @@ struct WhenColumn: View {
 
 /// A ground stop, delay program or closure: amber (or red) card, whether it catches your flight.
 struct NasAlertCard: View {
+    @Environment(Nav.self) private var nav
     let g: NasGroup
+    var startOpen = false
+    var showMapLink = true
     @State private var expanded = false
 
     var body: some View {
@@ -333,13 +336,19 @@ struct NasAlertCard: View {
                 if !scope.isEmpty {
                     Text("Departures from " + scope.joined(separator: " ")).font(.footnote).foregroundStyle(Th.muted)
                 }
-                if let adv = n["advisory"].string, let u = URL(string: adv) {
-                    Link("FAA advisory ↗", destination: u).font(.footnote.weight(.semibold))
+                HStack(spacing: 16) {
+                    if showMapLink && ["gs", "gdp"].contains(g.kind) && !n["scope"].array.isEmpty {
+                        Button("Map ›") { nav.push(.nas(g.id)) }.font(.footnote.weight(.semibold))
+                    }
+                    if let adv = n["advisory"].string, let u = URL(string: adv) {
+                        Link("FAA advisory ↗", destination: u).font(.footnote.weight(.semibold))
+                    }
                 }
             }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onAppear { if startOpen { expanded = true } }
         .background(color.opacity(0.13), in: RoundedRectangle(cornerRadius: Th.radius, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: Th.radius, style: .continuous).stroke(color.opacity(0.55), lineWidth: 1))
     }

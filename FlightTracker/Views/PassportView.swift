@@ -3,6 +3,7 @@ import SwiftUI
 /// Passport: everything you've flown, by year — the web app's cards, then the list.
 struct PassportView: View {
     @Environment(Store.self) private var store
+    @Environment(Nav.self) private var nav
     @Binding var showSettings: Bool
     @State private var showAll = false
     @State private var query = ""
@@ -50,7 +51,7 @@ struct PassportView: View {
                             .padding(.top, 16).padding(.bottom, 6)
                             ForEach(Array(g.1.enumerated()), id: \.offset) { _, f in
                                 if let id = f["id"].string {
-                                    NavigationLink(value: Route.hist(id)) { PassRow(f: f) }.buttonStyle(.plain)
+                                    Button { nav.push(.hist(id)) } label: { PassRow(f: f) }.buttonStyle(.plain)
                                 }
                             }
                         }

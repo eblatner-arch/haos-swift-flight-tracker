@@ -3,7 +3,7 @@ import SwiftUI
 /// A flight from your Passport: the route flown, the four times, the airplane.
 struct HistFlightView: View {
     @Environment(Store.self) private var store
-    @Environment(\.dismiss) private var dismiss
+    @Environment(Nav.self) private var nav
     let id: String
 
     var body: some View {
@@ -14,7 +14,7 @@ struct HistFlightView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
                         DetailHeader(badge: f["airline"].string == "UAL" ? "UA" : (f["airline"].string ?? ""),
-                                     sub: "\(f["display"].string ?? "Flight") • \(f["date"].string ?? "")", title: "\(a.city) to \(b.city)") { dismiss() }
+                                     sub: "\(f["display"].string ?? "Flight") • \(f["date"].string ?? "")", title: "\(a.city) to \(b.city)") { nav.back() }
                         if f["cancelled"].bool { StatusBanner(status: StatusLine.fixed("Cancelled", "", .red)) }
                         else if let d = f["diverted_to"].string { StatusBanner(status: StatusLine.fixed("Diverted to \(d)", "", .red)) }
                         else if let m = f["arr_delay"].int {
@@ -48,7 +48,6 @@ struct HistFlightView: View {
                 ProgressView()
             }
         }
-        .toolbar(.hidden, for: .navigationBar)
         .task(id: id) { await store.loadHist(id) }
     }
 

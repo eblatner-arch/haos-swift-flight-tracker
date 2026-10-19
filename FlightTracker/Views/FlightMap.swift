@@ -26,6 +26,14 @@ struct MapScene {
         var color: Color = .white
         var size: CGFloat = 24
     }
+    struct Area: Identifiable {
+        let id: String
+        let rings: [[CLLocationCoordinate2D]]
+        let color: Color
+        let fill: Double
+        let width: CGFloat
+    }
+    var areas: [Area] = []
     var lines: [Line] = []
     var pins: [Pin] = []
     var planes: [Plane] = []
@@ -44,6 +52,9 @@ struct FlightMap: View {
     @Environment(Store.self) private var store
     let route: Route?
     let tab: Tab
+    /// the map's size, and the part of it where routes should sit (above the sheet, clear of buttons)
+    let screen: CGSize
+    let area: CGRect
     @State private var camera: MapCameraPosition = .automatic
 
     private var scene: MapScene {
@@ -56,6 +67,8 @@ struct FlightMap: View {
             if let leg = store.rotationLeg(id, n) { return rotScene(leg, store.rotations[id]?[safe: n]) }
         case .airports?:
             return airportsScene()
+        case .nas(let key)?:
+            return nasScene(key)
 
         case nil:
             if tab == .passport { return passScene() }
@@ -151,6 +164,40 @@ struct FlightMap: View {
         return s
     }
 
+    /// an FAA program: the en-route centers whose departures it holds (shaded), the program's airport,
+    /// and where your flights (or their inbounds) depart: red if held, green if not
+    private func nasScene(_ key: String) -> MapScene {
+        var s = MapScene()
+        guard let g = store.nasGroup(key) else { return s }
+        let hot = g.kind == "gs" ? Th.red : Th.amber
+        let scope = Set(g.n["scope"].array.compactMap { $0.string })
+        for (id, c) in store.artcc.object {
+            let inS = scope.contains(id)
+            let rings = c["rings"].array.map { $0.array.compactMap(coord) }.filter { $0.count > 2 }
+            if rings.isEmpty { continue }
+            s.areas.append(.init(id: id, rings: rings, color: inS ? hot : Th.muted, fill: inS ? 0.22 : 0, width: inS ? 1.5 : 0.8))
+            if inS {
+                let big = rings.max { $0.count < $1.count } ?? []
+                let la = big.map(\.latitude).reduce(0, +) / Double(max(1, big.count)), lo = big.map(\.longitude).reduce(0, +) / Double(max(1, big.count))
+                s.pins.append(.init(id: "c-" + id, label: id, coordinate: CLLocationCoordinate2D(latitude: la, longitude: lo), color: hot.opacity(0.85)))
+                s.frame.append(CLLocationCoordinate2D(latitude: la, longitude: lo))
+            }
+        }
+        if let p = store.airportCoord(g.airport) {
+            s.pins.append(.init(id: g.airport, label: g.airport, coordinate: p, color: hot))
+            s.frame.append(p)
+        }
+        for u in g.uses {
+            for i in u.impact {
+                guard let from = i["from"].string, let p = store.airportCoord(from) ?? Airport(j: u.leg.inbound["origin"]).coordinate else { continue }
+                let c = i["airborne"].bool ? Th.muted : i["hit"].isNull ? Th.muted : i["hit"].bool ? hot : Th.green
+                if from != g.airport { s.pins.append(.init(id: "f-" + from, label: from, coordinate: p, color: c)) }
+                s.frame.append(p)
+            }
+        }
+        return s
+    }
+
     private func histScene(_ f: JSON) -> MapScene {
         var s = MapScene()
         let a = Airport(j: f["dep_ap"]), b = Airport(j: f["arr_ap"])
@@ -182,6 +229,13 @@ struct FlightMap: View {
     var body: some View {
         let sc = scene
         Map(position: $camera) {
+            ForEach(sc.areas) { a in
+                ForEach(Array(a.rings.enumerated()), id: \.offset) { _, r in
+                    MapPolygon(coordinates: r)
+                        .foregroundStyle(a.color.opacity(a.fill))
+                        .stroke(a.color.opacity(a.fill > 0 ? 0.9 : 0.5), lineWidth: a.width)
+                }
+            }
             ForEach(sc.lines) { l in
                 if l.dashed {
                     MapPolyline(coordinates: l.coords, contourStyle: l.geodesic ? .geodesic : .straight)
@@ -242,15 +296,15 @@ struct FlightMap: View {
         switch f {
         case .fit:
             let pts = scene.frame
-            target = pts.isEmpty ? nil : .rect(fitRect(pts))
+            target = pts.isEmpty ? nil : .rect(fitRect(pts, fill: 0.9))
         case .area(let la, let lo, let km):
             let d = km / 111.0
-            target = .rect(fitRect([CLLocationCoordinate2D(latitude: la - d, longitude: lo - d), CLLocationCoordinate2D(latitude: la + d, longitude: lo + d)], margin: 0.05))
+            target = .rect(fitRect([CLLocationCoordinate2D(latitude: la - d, longitude: lo - d), CLLocationCoordinate2D(latitude: la + d, longitude: lo + d)], fill: 1))
         case .plane:
             if let p = scene.planes.last {
                 let d = 0.6, c = p.coordinate
                 target = .rect(fitRect([CLLocationCoordinate2D(latitude: c.latitude - d, longitude: c.longitude - d),
-                                        CLLocationCoordinate2D(latitude: c.latitude + d, longitude: c.longitude + d)], margin: 0.05))
+                                        CLLocationCoordinate2D(latitude: c.latitude + d, longitude: c.longitude + d)], fill: 1))
             } else {
                 target = nil
             }
@@ -259,18 +313,20 @@ struct FlightMap: View {
         withAnimation(.easeInOut(duration: 1.1)) { camera = target }
     }
 
-    /// A map rectangle around the points, with room below for the sheet (it covers about half
-    /// the screen) so the route sits in the part of the map you can see.
-    private func fitRect(_ pts: [CLLocationCoordinate2D], margin: Double = 0.12) -> MKMapRect {
+    /// The whole map's rectangle (same shape as the screen) that puts the points in the open area
+    /// above the sheet: as big as fits (times fill), centered in that area.
+    private func fitRect(_ pts: [CLLocationCoordinate2D], fill: Double) -> MKMapRect {
         var r = MKMapRect.null
         for c in pts {
             let p = MKMapPoint(c)
             r = r.union(MKMapRect(x: p.x, y: p.y, width: 1, height: 1))
         }
-        let w = max(r.width, 2000), h = max(r.height, 2000)
-        let padW = w * margin, padTop = h * margin
-        let below = h * 1.1   // the sheet
-        return MKMapRect(x: r.midX - w / 2 - padW, y: r.minY - padTop, width: w + 2 * padW, height: h + padTop + below)
+        let W = max(1, screen.width), H = max(1, screen.height)
+        let aw = max(60, area.width), ah = max(60, area.height)
+        // map points per screen point
+        let k = max(max(r.width, 3000) / (aw * fill), max(r.height, 3000) / (ah * fill))
+        let cx = area.midX, cy = area.midY
+        return MKMapRect(x: r.midX - cx * k, y: r.midY - cy * k, width: W * k, height: H * k)
     }
 }
 

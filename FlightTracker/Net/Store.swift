@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import CoreLocation
 
 /// Everything the screens show: your flights (api/state), each flight's full detail (api/leg/<id>)
 /// with its live position (api/live/<id>), the aircraft pictures index and FAA ages.
@@ -67,6 +68,34 @@ final class Store {
 
     func loadRotation(_ id: String) async {
         if let r = try? await API.get("api/leg/\(id)?rotation") { rotations[id] = r.0["rotation"].array; details[id] = Leg(j: r.0) }
+    }
+
+    /// en-route center boundaries (for the FAA program maps): {ZNY: {rings: [[[lat, lon]...]]}}
+    var artcc: JSON = .null
+    func loadArtcc() async {
+        if artcc.isNull, let r = try? await API.get("api/artcc") { artcc = r.0 }
+    }
+
+    /// an FAA program by key: from your flights (with which of them it touches), else the airport list
+    func nasGroup(_ key: String) -> NasGroup? {
+        if let g = nasGroups(legs).first(where: { $0.id == key }) { return g }
+        for a in airportsStatus["airports"].array {
+            for n in a["items"].array where n["key"].string == key {
+                return NasGroup(n: n, tz: a["tz"].string.flatMap(TimeZone.init(identifier:)) ?? .current, uses: [])
+            }
+        }
+        for n in stateJ["nas"].array where n["key"].string == key { return NasGroup(n: n, tz: .current, uses: []) }
+        return nil
+    }
+
+    func airportCoord(_ code: String) -> CLLocationCoordinate2D? {
+        for l in legs { for ap in [l.dep, l.arr] where ap.code == code { if let c = ap.coordinate { return c } } }
+        for a in airportsStatus["airports"].array where a["code"].string == code {
+            if let la = a["lat"].double, let lo = a["lon"].double { return CLLocationCoordinate2D(latitude: la, longitude: lo) }
+        }
+        let A = passport["airports"][code]
+        if let la = A["lat"].double, let lo = A["lon"].double { return CLLocationCoordinate2D(latitude: la, longitude: lo) }
+        return nil
     }
 
     func loadAirports() async {

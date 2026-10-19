@@ -16,7 +16,6 @@ struct FlightDetail: View {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .toolbar(.hidden, for: .navigationBar)
         .task(id: id) {
             await store.loadDetail(id)
             var n = 0
@@ -44,7 +43,6 @@ struct AircraftLegView: View {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .toolbar(.hidden, for: .navigationBar)
         .task(id: id) {
             await store.loadRotation(id)
             while !Task.isCancelled {
@@ -59,7 +57,7 @@ struct AircraftLegView: View {
 /// The flight page itself (your flight, or one of its airplane's earlier legs).
 struct FlightPage: View {
     @Environment(Store.self) private var store
-    @Environment(\.dismiss) private var dismiss
+    @Environment(Nav.self) private var nav
     let leg: Leg
     let sub: String
     let refreshID: String?
@@ -69,7 +67,7 @@ struct FlightPage: View {
     var body: some View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
-                        DetailHeader(badge: leg.airlineCode, sub: sub, title: "\(leg.dep.city) to \(leg.arr.city)") { dismiss() }
+                        DetailHeader(badge: leg.airlineCode, sub: sub, title: "\(leg.dep.city) to \(leg.arr.city)") { nav.back() }
                         StatusBanner(status: StatusLine(leg)).padding(.horizontal, -14)
                         ForEach(nasGroups([leg]).filter { $0.major }) { NasAlertCard(g: $0) }
                         EndpointView(leg: leg, departure: true)
@@ -362,6 +360,7 @@ struct GoodToKnow: View {
 /// The airplane bringing you in, and the legs before it, as a timeline.
 struct InboundCard: View {
     @Environment(Store.self) private var store
+    @Environment(Nav.self) private var nav
     let leg: Leg
     /// (your flight's id, the index of this card's first leg in its airplane's rotation)
     let base: (String, Int)
@@ -397,11 +396,11 @@ struct InboundCard: View {
                 .padding(12)
                 .background(Th.card2, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 ForEach(Array(rot.prefix(3).enumerated()), id: \.offset) { i, r in
-                    NavigationLink(value: Route.aircraft(base.0, base.1 + i)) { InboundLegRow(r: r).contentShape(Rectangle()) }.buttonStyle(.plain)
+                    Button { nav.push(.aircraft(base.0, base.1 + i)) } label: { InboundLegRow(r: r).contentShape(Rectangle()) }.buttonStyle(.plain)
                 }
                 if let last = rot.prefix(3).last { TimelineNode(code: Airport(j: last["origin"]).code) }
                 if rot.count > 3 {
-                    NavigationLink(value: Route.aircraft(base.0, base.1 + 3)) {
+                    Button { nav.push(.aircraft(base.0, base.1 + 3)) } label: {
                         HStack(spacing: 10) {
                             Text("\(rot.count - 3)").font(.system(size: 12, weight: .bold)).frame(width: 20, height: 20).overlay(Circle().stroke(Th.muted))
                             Text("Show More Flights").font(.system(size: 15)).foregroundStyle(Th.muted)

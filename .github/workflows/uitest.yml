@@ -1,0 +1,42 @@
+# Runs the UI test (swipes the sheet, opens a flight and an FAA program) in the simulator against the
+# stand-in add-on, and pushes its screenshots and measurements to the "screens" branch.
+name: UI test
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  uitest:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Generate the Xcode project
+        run: brew install xcodegen && xcodegen generate
+      - name: Stand-in add-on
+        run: |
+          mkdir -p /tmp/www && (python3 tools/mock_addon.py /tmp/www 8765 > /tmp/mock.log 2>&1 &)
+          sleep 2 && curl -s localhost:8765/api/state | head -c 100
+      - name: Pick an iPhone simulator
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin)['devices']
+          c=[x for k,v in d.items() if 'iOS' in k for x in v if x['name'].startswith('iPhone') and 'Pro Max' in x['name']]
+          c=c or [x for k,v in d.items() if 'iOS' in k for x in v if x['name'].startswith('iPhone')]
+          print(c[-1]['udid'])")
+          echo "UDID=$UDID" >> $GITHUB_ENV
+      - name: Test
+        run: |
+          mkdir -p shots
+          export TEST_RUNNER_SHOTS_DIR="$PWD/shots"
+          xcodebuild -project FlightTracker.xcodeproj -scheme FlightTracker -destination "id=$UDID" \
+            CODE_SIGNING_ALLOWED=NO test 2>&1 | grep -E "error:|Test Case|passed|failed|TEST " | tail -40 || true
+          ls shots
+      - name: Push to the screens branch
+        if: always()
+        run: |
+          cd shots
+          git init -q && git checkout -q -b screens
+          git add -A
+          git -c user.name=ci -c user.email=ci@users.noreply.github.com commit -qm "UI test of ${GITHUB_SHA::7}" || true
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${GITHUB_REPOSITORY}.git" screens

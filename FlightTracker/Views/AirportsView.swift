@@ -3,7 +3,7 @@ import SwiftUI
 /// FAA status for every US airport with a ground stop, delay program, closure or delay trend.
 struct AirportsView: View {
     @Environment(Store.self) private var store
-    @Environment(\.dismiss) private var dismiss
+    @Environment(Nav.self) private var nav
 
     var body: some View {
         let d = store.airportsStatus
@@ -14,7 +14,7 @@ struct AirportsView: View {
                 HStack {
                     Text("Airports").font(.system(size: 32, weight: .bold))
                     Spacer()
-                    RoundButton(symbol: "xmark") { dismiss() }
+                    RoundButton(symbol: "xmark") { nav.back() }
                 }
                 .padding(.top, 18)
                 Text("FAA status for every US airport with a ground stop, delay program, closure or delay trend" + (d["at"].date.map { " · updated \(Fmt.ago($0))" } ?? "") + ".")
@@ -39,7 +39,6 @@ struct AirportsView: View {
             .padding(.bottom, 100)
             .sheetScroll()
         }
-        .toolbar(.hidden, for: .navigationBar)
         .task {
             await store.loadAirports()
         }
@@ -68,11 +67,15 @@ struct AirportsView: View {
                 ForEach(Array(a["items"].array.enumerated()), id: \.offset) { _, n in
                     let when = n["end"].date.map { e in (n["start"].date.map { $0 > Date() ? Fmt.time($0, ap.timeZone) + "–" : "until " } ?? "until ") + Fmt.time(e, ap.timeZone) } ?? ""
                     let sub = [n["detail"].string, n["reason"].string?.capitalized, when.isEmpty ? nil : when].compactMap { $0 }.joined(separator: " · ")
+                    let tap = ["gs", "gdp"].contains(n["kind"].string ?? "") && !n["scope"].array.isEmpty
+                    Button { if tap, let k = n["key"].string { nav.push(.nas(k)) } } label: {
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(n["label"].string ?? "").font(.system(size: 15, weight: .bold))
+                        Text((n["label"].string ?? "") + (tap ? " ›" : "")).font(.system(size: 15, weight: .bold))
                             .foregroundStyle(["gs", "closure"].contains(n["kind"].string ?? "") ? Th.red : n["kind"].string == "gdp" ? Color(hex: 0xFF8A5C) : .white)
                         if !sub.isEmpty { Text(sub).font(.system(size: 13)).foregroundStyle(Th.muted) }
                     }
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             Spacer(minLength: 0)
