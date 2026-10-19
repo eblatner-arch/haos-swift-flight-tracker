@@ -43,6 +43,8 @@ final class Store {
     var alerts: [JSON] = []
     var passport: JSON = .null
     var passYear: String? = nil
+    /// the search button: Passport opens with its search box ready
+    var searchRequest = 0
     var histDetails: [String: JSON] = [:]
 
     func loadAlerts() async {
@@ -57,6 +59,41 @@ final class Store {
     /// Ask the add-on to check a flight again now.
     func refreshLeg(_ id: String) async {
         _ = try? await API.post("api/refresh/\(id)")
+    }
+
+    // ---------- the airplane's earlier legs, and FAA status everywhere ----------
+    var rotations: [String: [JSON]] = [:]
+    var airportsStatus: JSON = .null
+
+    func loadRotation(_ id: String) async {
+        if let r = try? await API.get("api/leg/\(id)?rotation") { rotations[id] = r.0["rotation"].array; details[id] = Leg(j: r.0) }
+    }
+
+    func loadAirports() async {
+        if let r = try? await API.get("api/airports/status") { airportsStatus = r.0 }
+    }
+
+    /// One of the airplane's earlier legs as a flight of its own (the same page as yours).
+    func rotationLeg(_ id: String, _ n: Int) -> Leg? {
+        let rot = rotations[id] ?? (leg(id)?.j["rotation"].array ?? [])
+        guard rot.indices.contains(n), let parent = leg(id) else { return nil }
+        let h = rot[n], t = h["times"]
+        let prior = Array(rot.dropFirst(n + 1))
+        var o: [String: JSON] = [
+            "id": .string("\(id)~\(n)"), "ident": h["ident"], "display": h["display_ident"].isNull ? h["ident"] : h["display_ident"],
+            "airline": parent.j["airline"], "dep_ap": h["origin"], "arr_ap": h["destination"], "flight": h, "phase": h["phase"],
+            "status": h["status"], "sched_out": t["out"]["scheduled"].isNull ? t["off"]["scheduled"] : t["out"]["scheduled"],
+            "sched_in": t["in"]["scheduled"].isNull ? t["on"]["scheduled"] : t["in"]["scheduled"],
+            "rotation": .array(prior), "inbound": prior.first ?? .null, "source": .string("FlightAware"),
+            "finished": .bool(["arrived", "cancelled", "diverted"].contains(h["phase"].string ?? "")),
+            "watching": .bool(true), "tail_count": h["tail_count"],
+        ]
+        if n == 0, !parent.j["inbound_live"].isNull { o["live"] = parent.j["inbound_live"] }
+        // its turn: from the airplane reaching the gate before it to this leg's departure
+        if let before = prior.first, let inB = Times(before["times"]["in"]).best, let outB = Times(t["out"]).best {
+            o["turn"] = .number((outB.timeIntervalSince(inB) / 60).rounded())
+        }
+        return Leg(j: .object(o))
     }
 
     func loadHist(_ id: String) async {

@@ -51,6 +51,10 @@ struct FlightMap: View {
             if let leg = store.leg(id) { return legScene(leg) }
         case .hist(let id)?:
             if let f = store.histDetails[id] { return histScene(f) }
+        case .aircraft(let id, let n)?:
+            if let leg = store.rotationLeg(id, n) { return rotScene(leg, store.rotations[id]?[safe: n]) }
+        case .airports?:
+            return airportsScene()
         case nil:
             if tab == .passport { return passScene() }
         }
@@ -113,6 +117,35 @@ struct FlightMap: View {
             if let c = ap.coordinate { s.pins.append(.init(id: ap.code, label: "\(ap.city)  \(ap.code)", coordinate: c)); s.frame.append(c) }
         }
         if let pos = leg.position { s.planes.append(.init(id: leg.id, coordinate: pos.0, heading: pos.1, size: 28)) }
+        return s
+    }
+
+    /// an earlier leg of your airplane: its track (if the add-on sent one), its route, the airplane
+    private func rotScene(_ leg: Leg, _ raw: JSON?) -> MapScene {
+        var s = MapScene()
+        let tr = (raw ?? .null)["track"].array.compactMap(coord)
+        let gc = straight(leg)
+        if gc.count == 2 { s.lines.append(.init(id: "plan", coords: gc, color: Th.violet.opacity(0.6), width: 2, geodesic: true, dashed: true)); s.frame += gc }
+        if tr.count > 1 { s.lines.append(.init(id: "track", coords: tr, color: Th.violet, width: 3.5, geodesic: false)) }
+        for ap in [leg.dep, leg.arr] { if let c = ap.coordinate { s.pins.append(.init(id: ap.code, label: "\(ap.city)  \(ap.code)", coordinate: c, color: Th.violet)) } }
+        if leg.phase == "airborne", let last = tr.last {
+            s.planes.append(.init(id: "p", coordinate: leg.live?.coordinate ?? last, heading: leg.live?.heading ?? (tr.count > 1 ? bearing(tr[tr.count - 2], last) : 0), color: Th.violet, size: 26))
+        }
+        return s
+    }
+
+    /// FAA status: every airport with an issue, red for programs and stops, amber for delays
+    private func airportsScene() -> MapScene {
+        var s = MapScene()
+        for a in store.airportsStatus["airports"].array {
+            guard let la = a["lat"].double, let lo = a["lon"].double, let code = a["code"].string else { continue }
+            let kinds = a["items"].array.compactMap { $0["kind"].string }
+            let red = kinds.contains { ["gs", "closure", "gdp"].contains($0) }
+            let c = CLLocationCoordinate2D(latitude: la, longitude: lo)
+            s.pins.append(.init(id: code, label: code, coordinate: c, color: red ? Th.red : Th.amber))
+            s.frame.append(c)
+        }
+        if s.frame.isEmpty { s.frame = [CLLocationCoordinate2D(latitude: 48, longitude: -124), CLLocationCoordinate2D(latitude: 25, longitude: -68)] }
         return s
     }
 
@@ -233,3 +266,8 @@ struct FlightMap: View {
         return MKMapRect(x: r.midX - w / 2 - padW, y: r.minY - padTop, width: w + 2 * padW, height: h + padTop + below)
     }
 }
+
+extension Array {
+    subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil }
+}
+

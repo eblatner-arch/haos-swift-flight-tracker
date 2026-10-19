@@ -70,7 +70,9 @@ struct Avatar: View {
 /// The floating tab bar: My Flights, Alerts, Passport.
 struct TabBar: View {
     @Binding var tab: Tab
+    let search: () -> Void
     var body: some View {
+        HStack(spacing: 10) {
         HStack(spacing: 4) {
             ForEach(Tab.allCases, id: \.self) { t in
                 Button { tab = t } label: {
@@ -88,6 +90,14 @@ struct TabBar: View {
         .padding(5)
         .background(Color(hex: 0x26262A, alpha: 0.94), in: Capsule())
         .overlay(Capsule().stroke(Color.white.opacity(0.08), lineWidth: 1))
+            Button(action: search) {
+                Image(systemName: "magnifyingglass").font(.system(size: 20, weight: .bold)).foregroundStyle(.white)
+                    .frame(width: 58, height: 58)
+                    .background(Color(hex: 0x26262A, alpha: 0.94), in: Circle())
+                    .overlay(Circle().stroke(Color.white.opacity(0.08), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+        }
         .shadow(color: .black.opacity(0.4), radius: 12, y: 4)
         .padding(.horizontal, 14).padding(.bottom, 6)
     }

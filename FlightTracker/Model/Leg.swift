@@ -124,7 +124,11 @@ struct Leg: Identifiable, Equatable {
 
     var tail: String? { flight["tail"].string?.uppercased() }
     var aircraftType: String? { flight["aircraft_type"].string?.uppercased() }
-    var aircraftName: String? { flight["aircraft_name"].string ?? aircraftType.flatMap { typeNames[$0] } }
+    var aircraftName: String? {
+        // FlightAware's "Boeing 737-900 (twin-jet)": without the kind
+        let n = flight["aircraft_name"].string?.replacingOccurrences(of: #"\s*\((twin|tri|quad|single)[- ]?(jet|engine|turboprop|piston)\)"#, with: "", options: [.regularExpression, .caseInsensitive])
+        return n ?? aircraftType.flatMap { typeNames[$0] }
+    }
     var tailCount: Int? { j["tail_count"].int }
     var distanceNM: Double? { flight["distance_nm"].double }
 

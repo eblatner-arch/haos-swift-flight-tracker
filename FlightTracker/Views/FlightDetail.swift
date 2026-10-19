@@ -5,29 +5,82 @@ import SwiftUI
 /// Live position every 5 s while it's open, the whole flight every minute.
 struct FlightDetail: View {
     @Environment(Store.self) private var store
-    @Environment(\.dismiss) private var dismiss
     let id: String
-    @State private var refreshing = false
 
     var body: some View {
         Group {
             if let leg = store.leg(id) {
+                FlightPage(leg: leg, sub: "\(leg.display.replacingOccurrences(of: leg.airlineCode, with: leg.airlineCode + " ")) • \(Fmt.day(leg.out.best, leg.dep.timeZone).uppercased())\(leg.deadhead ? " • DH" : "")",
+                           refreshID: leg.finished ? nil : id, inboundBase: (id, 0))
+            } else {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .toolbar(.hidden, for: .navigationBar)
+        .task(id: id) {
+            await store.loadDetail(id)
+            var n = 0
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                if Task.isCancelled { break }
+                n += 1
+                if n % 12 == 0 { await store.loadDetail(id) } else { await store.pollLive(id) }
+            }
+        }
+    }
+}
+
+/// An earlier leg of your airplane (your inbound, or the one before it), as a flight page.
+struct AircraftLegView: View {
+    @Environment(Store.self) private var store
+    let id: String
+    let n: Int
+
+    var body: some View {
+        Group {
+            if let leg = store.rotationLeg(id, n) {
+                FlightPage(leg: leg, sub: "\(leg.display) • \(n == 0 ? "YOUR INBOUND" : "\(n + 1) LEGS BACK")", refreshID: nil, inboundBase: (id, n + 1))
+            } else {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .toolbar(.hidden, for: .navigationBar)
+        .task(id: id) {
+            await store.loadRotation(id)
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(30))
+                if Task.isCancelled { break }
+                await store.loadRotation(id)
+            }
+        }
+    }
+}
+
+/// The flight page itself (your flight, or one of its airplane's earlier legs).
+struct FlightPage: View {
+    @Environment(Store.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    let leg: Leg
+    let sub: String
+    let refreshID: String?
+    let inboundBase: (String, Int)
+    @State private var refreshing = false
+
+    var body: some View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
-                        DetailHeader(badge: leg.airlineCode,
-                                     sub: "\(leg.display.replacingOccurrences(of: leg.airlineCode, with: leg.airlineCode + " ")) • \(Fmt.day(leg.out.best, leg.dep.timeZone).uppercased())\(leg.deadhead ? " • DH" : "")",
-                                     title: "\(leg.dep.city) to \(leg.arr.city)") { dismiss() }
+                        DetailHeader(badge: leg.airlineCode, sub: sub, title: "\(leg.dep.city) to \(leg.arr.city)") { dismiss() }
                         StatusBanner(status: StatusLine(leg)).padding(.horizontal, -14)
                         ForEach(nasGroups([leg]).filter { $0.major }) { NasAlertCard(g: $0) }
                         EndpointView(leg: leg, departure: true)
                         MidLine(leg: leg)
                         EndpointView(leg: leg, departure: false)
                         GoodToKnow(leg: leg)
-                        if !leg.inbound.isNull { InboundCard(leg: leg) }
+                        if !leg.inbound.isNull { InboundCard(leg: leg, base: inboundBase) }
                         TimesCard(leg: leg)
                         AircraftCard(leg: leg)
                         HStack(spacing: 8) {
-                            if !leg.finished {
+                            if let id = refreshID {
                                 pill(refreshing ? "Refreshing…" : "Refresh this flight") {
                                     refreshing = true
                                     Task {
@@ -60,21 +113,6 @@ struct FlightDetail: View {
                     .padding(.horizontal, 14)
                     .padding(.bottom, 100)
                 }
-            } else {
-                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-        }
-        .toolbar(.hidden, for: .navigationBar)
-        .task(id: id) {
-            await store.loadDetail(id)
-            var n = 0
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(5))
-                if Task.isCancelled { break }
-                n += 1
-                if n % 12 == 0 { await store.loadDetail(id) } else { await store.pollLive(id) }
-            }
-        }
     }
 
     private func faURL(_ leg: Leg) -> URL? {
@@ -324,6 +362,8 @@ struct GoodToKnow: View {
 struct InboundCard: View {
     @Environment(Store.self) private var store
     let leg: Leg
+    /// (your flight's id, the index of this card's first leg in its airplane's rotation)
+    let base: (String, Int)
 
     private var rot: [JSON] { leg.j["rotation"].array.isEmpty ? [leg.inbound] : leg.j["rotation"].array }
 
@@ -355,16 +395,19 @@ struct InboundCard: View {
                 }
                 .padding(12)
                 .background(Th.card2, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                ForEach(Array(rot.prefix(3).enumerated()), id: \.offset) { _, r in
-                    InboundLegRow(r: r)
+                ForEach(Array(rot.prefix(3).enumerated()), id: \.offset) { i, r in
+                    NavigationLink(value: Route.aircraft(base.0, base.1 + i)) { InboundLegRow(r: r).contentShape(Rectangle()) }.buttonStyle(.plain)
                 }
                 if let last = rot.prefix(3).last { TimelineNode(code: Airport(j: last["origin"]).code) }
                 if rot.count > 3 {
-                    HStack(spacing: 10) {
-                        Text("\(rot.count - 3)").font(.system(size: 12, weight: .bold)).frame(width: 20, height: 20).overlay(Circle().stroke(Th.muted))
-                        Text("Show More Flights").font(.system(size: 15)).foregroundStyle(Th.muted)
+                    NavigationLink(value: Route.aircraft(base.0, base.1 + 3)) {
+                        HStack(spacing: 10) {
+                            Text("\(rot.count - 3)").font(.system(size: 12, weight: .bold)).frame(width: 20, height: 20).overlay(Circle().stroke(Th.muted))
+                            Text("Show More Flights").font(.system(size: 15)).foregroundStyle(Th.muted)
+                        }
+                        .padding(.leading, 8).padding(.top, 6)
                     }
-                    .padding(.leading, 8).padding(.top, 6)
+                    .buttonStyle(.plain)
                 }
             }
         }

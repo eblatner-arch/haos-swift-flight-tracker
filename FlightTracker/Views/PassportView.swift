@@ -5,10 +5,17 @@ struct PassportView: View {
     @Environment(Store.self) private var store
     @Binding var showSettings: Bool
     @State private var showAll = false
+    @State private var query = ""
+    @FocusState private var searching: Bool
 
     var body: some View {
         let d = store.passport, st = d["stats"]
-        let flights = d["flights"].array
+        let all = d["flights"].array
+        let q = query.trimmingCharacters(in: .whitespaces).uppercased()
+        let flights = q.isEmpty ? all : all.filter { f in
+            [f["display"].string, f["dep"].string, f["arr"].string, f["diverted_to"].string, f["tail"].string, f["aircraft"].string, f["type"].string, f["date"].string]
+                .compactMap { $0?.uppercased() }.contains { $0.contains(q) || $0.replacingOccurrences(of: " ", with: "").contains(q.replacingOccurrences(of: " ", with: "")) }
+        }
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 SheetTitle(title: "Passport") { Avatar { showSettings = true } }
@@ -18,7 +25,15 @@ struct PassportView: View {
                         ForEach(d["years"].array.compactMap { $0.string }, id: \.self) { y in chip(y, y) }
                     }
                 }
-                if !st.isNull {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(Th.muted)
+                    TextField("Flight, airport, tail, aircraft, date", text: $query)
+                        .textInputAutocapitalization(.characters).autocorrectionDisabled().focused($searching)
+                    if !query.isEmpty { Button { query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Th.muted) }.buttonStyle(.plain) }
+                }
+                .padding(.horizontal, 12).padding(.vertical, 10)
+                .background(Th.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                if !st.isNull && q.isEmpty {
                     PassCard(st: st, flights: flights, year: store.passYear)
                     DelayCard(flights: flights)
                     if let top = st["top_aircraft"][0][0].string { AircraftStatCard(name: top, count: st["top_aircraft"][0][1].int ?? 0) }
@@ -50,6 +65,8 @@ struct PassportView: View {
             .padding(.bottom, 90)
         }
         .task(id: store.passYear) { await store.loadPassport() }
+        .onChange(of: store.searchRequest) { _, _ in searching = true }
+        .onAppear { if store.searchRequest > 0 { searching = true } }
         .refreshable { await store.loadPassport() }
     }
 

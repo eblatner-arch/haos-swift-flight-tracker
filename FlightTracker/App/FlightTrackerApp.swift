@@ -17,6 +17,8 @@ struct FlightTrackerApp: App {
 enum Route: Hashable {
     case leg(String)
     case hist(String)
+    case aircraft(String, Int)   // your flight's id, and which earlier leg of its airplane (0 = the inbound)
+    case airports
 }
 
 enum Tab: String, CaseIterable {
@@ -40,7 +42,8 @@ struct RootView: View {
     var body: some View {
         FlightMap(route: path.last, tab: tab)
             .ignoresSafeArea()
-            .overlay(alignment: .topTrailing) { MapButtons(route: path.last) }
+            .overlay(alignment: .topTrailing) { MapButtons(route: path.last, airports: { path = [.airports] }) }
+            .overlay(alignment: .top) { Telemetry(route: path.last) }
             .sheet(isPresented: .constant(true)) {
                 NavigationStack(path: $path) {
                     HomeView(tab: $tab, showSettings: $showSettings, open: { path = [$0] })
@@ -48,11 +51,17 @@ struct RootView: View {
                             switch r {
                             case .leg(let id): FlightDetail(id: id)
                             case .hist(let id): HistFlightView(id: id)
+                            case .aircraft(let id, let n): AircraftLegView(id: id, n: n)
+                            case .airports: AirportsView()
                             }
                         }
                 }
-                .overlay(alignment: .bottom) { TabBar(tab: Binding(get: { tab }, set: { t in tab = t; path = [] })) }
+                .overlay(alignment: .bottom) {
+                    TabBar(tab: Binding(get: { tab }, set: { t in tab = t; path = [] }),
+                           search: { tab = .passport; path = []; detent = .large; store.searchRequest += 1 })
+                }
                 .presentationBackground(Th.sheet)
+                .presentationContentInteraction(.resizes)   // swiping anywhere moves the sheet first, then scrolls
                 .presentationDetents([.height(96), .fraction(0.45), .large], selection: $detent)
                 .presentationBackgroundInteraction(.enabled(upThrough: .fraction(0.45)))
                 .presentationCornerRadius(26)
@@ -99,10 +108,12 @@ struct RootView: View {
 struct MapButtons: View {
     @Environment(Store.self) private var store
     let route: Route?
+    let airports: () -> Void
 
     var body: some View {
         VStack(spacing: 10) {
             button("location.fill") { store.focus(.fit) }
+            if route == nil { button("building.columns.fill") { airports() } }
             if case .leg(let id)? = route, let leg = store.leg(id) {
                 if leg.position != nil { button("airplane") { store.focus(.plane) } }
                 if let c = leg.dep.coordinate { button("airplane.departure") { store.focus(.area(lat: c.latitude, lon: c.longitude, km: 2.2)) } }
@@ -120,6 +131,31 @@ struct MapButtons: View {
                 .background(Color(hex: 0x24242A, alpha: 0.93), in: Circle())
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// Speed and altitude on top of the map while your flight is in the air (like the web app's pill).
+struct Telemetry: View {
+    @Environment(Store.self) private var store
+    let route: Route?
+    var body: some View {
+        if case .leg(let id)? = route, let leg = store.leg(id), leg.phase == "airborne", let lv = leg.live, let gs = lv.speed {
+            HStack(spacing: 16) {
+                HStack(spacing: 5) {
+                    Image(systemName: "speedometer").foregroundStyle(Th.muted)
+                    Text("\(Int(gs * 1.15078).formatted())").font(.system(size: 17, weight: .bold))
+                    Text("MPH").font(.system(size: 11, weight: .bold)).foregroundStyle(Th.muted)
+                }
+                HStack(spacing: 5) {
+                    Image(systemName: "arrow.up.to.line").foregroundStyle(Th.muted)
+                    Text(lv.altitude.map { Int($0).formatted() } ?? "—").font(.system(size: 17, weight: .bold))
+                    Text("FT").font(.system(size: 11, weight: .bold)).foregroundStyle(Th.muted)
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 9)
+            .background(Color(hex: 0x26262A, alpha: 0.94), in: Capsule())
+            .padding(.top, 54)
+        }
     }
 }
 
