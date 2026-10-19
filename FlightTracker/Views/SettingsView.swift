@@ -11,6 +11,7 @@ struct SettingsView: View {
     @AppStorage("mapGlobe") private var globe = false
     @AppStorage("mapDark") private var dark = false
     @AppStorage("lowData") private var lowData = false
+    @AppStorage("mapDays") private var mapDays = 0
     @State private var testMsg: String?
     @State private var testResult: String?
     @State private var testing = false
@@ -60,6 +61,13 @@ struct SettingsView: View {
                     Toggle("Globe", isOn: $globe)
                     Toggle("Dark map (no satellite)", isOn: $dark)
                     Toggle("Data saver", isOn: $lowData)
+                    Picker("Routes on the home map", selection: $mapDays) {
+                        Text("All upcoming").tag(0)
+                        Text("Next 3 days").tag(3)
+                        Text("Next 7 days").tag(7)
+                        Text("Next 14 days").tag(14)
+                        Text("Next 30 days").tag(30)
+                    }
                 } header: {
                     Text("Display")
                 } footer: {
@@ -134,7 +142,7 @@ private struct AddonSettingsView: View {
                 Toggle(it["label"].string ?? key, isOn: Binding(get: { flags[key] ?? false }, set: { flags[key] = $0; Task { await save() } }))
             } else {
                 let lo = it["min"].double ?? 0, hi = it["max"].double ?? 999
-                Stepper(value: Binding(get: { values[key] ?? lo }, set: { values[key] = $0; Task { await save() } }), in: lo...hi) {
+                Stepper(value: Binding(get: { values[key] ?? lo }, set: { values[key] = $0; Task { await save() } }), in: lo...hi, step: hi - lo > 100 ? 5 : 1) {
                     HStack {
                         Text(it["label"].string ?? key)
                         Spacer()

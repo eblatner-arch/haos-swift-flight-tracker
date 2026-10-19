@@ -35,9 +35,14 @@ struct PassportView: View {
                 .padding(.horizontal, 12).padding(.vertical, 10)
                 .background(Th.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 if !st.isNull && q.isEmpty {
-                    PassCard(st: st, flights: flights, year: store.passYear)
-                    DelayCard(flights: flights)
-                    if let top = st["top_aircraft"][0][0].string { AircraftStatCard(name: top, count: st["top_aircraft"][0][1].int ?? 0) }
+                    let yq = store.passYear.map { "year=\($0)&" } ?? ""
+                    Button { if Nav.blocked { return }; nav.push(.stats(store.passYear ?? "")) } label: { PassCard(st: st, flights: flights, year: store.passYear) }.buttonStyle(.plain)
+                    Button { if Nav.blocked { return }; nav.push(.find(yq + "st=late15&sort=late")) } label: { DelayCard(flights: flights) }.buttonStyle(.plain)
+                    if let top = st["top_aircraft"][0][0].string {
+                        Button { if Nav.blocked { return }; nav.push(.find(yq + "ac=" + (top.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? top))) } label: {
+                            AircraftStatCard(name: top, count: st["top_aircraft"][0][1].int ?? 0)
+                        }.buttonStyle(.plain)
+                    }
                 }
                 if !flights.isEmpty {
                     SectionHead(title: "Flights", trailing: "\(flights.count)")
@@ -123,6 +128,7 @@ private struct PassCard: View {
                     }
                 }
             }
+            CardLink(text: "All Flight Stats", tint: .white)
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -150,6 +156,7 @@ private struct DelayCard: View {
                 Text("\(Int((lost / 60).rounded()))").font(.system(size: 56, weight: .heavy))
                 Text("hours lost from delays").font(.system(size: 20, weight: .semibold))
                 Text("Delayed flights averaged \(Fmt.span(lost / Double(late.count) * 60)) late").font(.subheadline).foregroundStyle(Color(hex: 0xFF9C8F))
+                CardLink(text: "All Delay Stats", tint: .white).padding(.top, 10)
             }
             .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -173,6 +180,7 @@ private struct AircraftStatCard: View {
                 AsyncImage(url: u) { $0.resizable().scaledToFit().shadow(color: Color(hex: 0x1D2A55).opacity(0.28), radius: 8, y: 6) } placeholder: { Color.clear.frame(height: 80) }
                     .padding(.top, 10)
             }
+            CardLink(text: "All Aircraft Stats", tint: Color(hex: 0x1D2A55)).padding(.top, 8)
         }
         .foregroundStyle(Color(hex: 0x1D2A55))
         .padding(18)
@@ -208,5 +216,21 @@ private struct PassRow: View {
         let p = s.split(separator: "-").compactMap { Int($0) }
         guard p.count == 3, let d = Calendar.current.date(from: DateComponents(year: p[0], month: p[1], day: p[2])) else { return s }
         return d.formatted(.dateTime.month(.abbreviated).day().year())
+    }
+}
+
+/// the bar at the bottom of a Passport card: where tapping it goes
+struct CardLink: View {
+    let text: String
+    let tint: Color
+    var body: some View {
+        HStack {
+            Text(text).font(.system(size: 17, weight: .medium))
+            Spacer()
+            Image(systemName: "chevron.right").font(.system(size: 15, weight: .bold))
+        }
+        .foregroundStyle(tint)
+        .padding(.horizontal, 16).padding(.vertical, 12)
+        .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }

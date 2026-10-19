@@ -7,6 +7,8 @@ import SwiftUI
 struct FindView: View {
     @Environment(Store.self) private var store
     @Environment(Nav.self) private var nav
+    /// filters to start with, as the web app's address has them: year, st, sort, hr, route, ap, ac, tail
+    var preset: String = ""
     @State private var all: [JSON] = []
     @State private var q = ""
     @State private var chips: Set<String> = []
@@ -81,8 +83,27 @@ struct FindView: View {
         .scrollDismissesKeyboard(.interactively)
         .task {
             if let r = try? await API.get("api/history") { all = r.0["flights"].array }
-            typing = true
+            if preset.isEmpty { typing = true } else { applyPreset() }
         }
+    }
+
+    private func applyPreset() {
+        let items = URLComponents(string: "?" + preset)?.queryItems ?? []
+        for it in items {
+            guard let v = it.value, !v.isEmpty else { continue }
+            switch it.name {
+            case "year": year = v
+            case "st": chips.insert(v)
+            case "sort": sort = v
+            case "hr": hour = (Int(v.prefix(2)) ?? -3) / 3
+            case "route": route = v.replacingOccurrences(of: "–", with: "-")
+            case "ap": either = v
+            case "ac": aircraft = v
+            case "tail": tail = v
+            default: break
+            }
+        }
+        more = true
     }
 
     private var filters: some View {
@@ -268,7 +289,7 @@ struct FindView: View {
     }
 }
 
-private struct FindRow: View {
+struct FindRow: View {
     let f: JSON
     var body: some View {
         let al = f["airline"].string == "UAL" ? "UA" : (f["airline"].string ?? "")

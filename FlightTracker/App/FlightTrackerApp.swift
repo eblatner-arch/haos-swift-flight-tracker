@@ -20,7 +20,8 @@ enum Route: Hashable {
     case aircraft(String, Int)   // your flight's id, and which earlier leg of its airplane (0 = the inbound)
     case airports
     case nas(String)             // an FAA program (ground stop, delay program) by its key
-    case find                    // search your flights
+    case find(String)            // search your flights, with filters ("st=late15&sort=late")
+    case stats(String)           // Flight Stats for a year ("" = all)
 }
 
 enum Tab: String, CaseIterable {
@@ -67,7 +68,7 @@ struct RootView: View {
                 VStack {
                     Spacer()
                     TabBar(tab: Binding(get: { tab }, set: { t in tab = t; nav.path = []; setStop(.mid) }),
-                           search: { nav.path = [.find]; setStop(.full) })
+                           search: { nav.path = [.find("")]; setStop(.full) })
                         .padding(.bottom, max(8, safeBottom() - 14))
                 }
             }
@@ -140,7 +141,8 @@ struct RootView: View {
         case .aircraft(let id, let n): AircraftLegView(id: id, n: n)
         case .airports: AirportsView()
         case .nas(let key): NasProgramView(key: key)
-        case .find: FindView()
+        case .find(let f): FindView(preset: f)
+        case .stats(let y): StatsView(year: y)
         }
     }
 

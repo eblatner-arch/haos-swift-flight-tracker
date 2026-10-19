@@ -125,6 +125,19 @@ final class Store {
         return Leg(j: .object(o))
     }
 
+    /// airport diagrams by code (fetched once each)
+    var layouts: [String: AirportLayout] = [:]
+    @ObservationIgnored private var layoutAsked = Set<String>()
+    func loadLayout(_ code: String) async {
+        guard !code.isEmpty, code != "?", !layoutAsked.contains(code) else { return }
+        layoutAsked.insert(code)
+        if let r = try? await API.get("api/airport/\(code)/layout", timeout: 40), !r.0["features"].array.isEmpty {
+            layouts[code] = AirportLayout(r.0)
+        } else {
+            layoutAsked.remove(code)
+        }
+    }
+
     /// flights whose whole Lookup Log was asked for
     @ObservationIgnored var logAll = Set<String>()
 

@@ -56,9 +56,16 @@ struct FlightMap: View {
     let screen: CGSize
     let area: CGRect
     @State private var camera: MapCameraPosition = .automatic
+    /// a framing just asked for: once the camera stops, it's checked and corrected (MapKit's own
+    /// fitting of a rectangle pads it, and the globe zooms out further)
+    @State private var want: MKMapRect?
+    /// what's on screen now, and how far up the camera is (for the airport diagrams)
+    @State private var seen: MKMapRect = .null
+    @State private var camDist: Double = 1e7
     /// Map shape (Settings): flat frames routes exactly; the globe looks like Flighty's but has to zoom out further
     @AppStorage("mapGlobe") private var globe = false
     @AppStorage("mapDark") private var dark = false
+    @AppStorage("mapDays") private var mapDays = 0
 
     private var scene: MapScene {
         switch route {
@@ -72,7 +79,7 @@ struct FlightMap: View {
             return airportsScene()
         case .nas(let key)?:
             return nasScene(key)
-        case .find?:
+        case .find?, .stats?:
             return passScene()
 
         case nil:
@@ -88,7 +95,8 @@ struct FlightMap: View {
 
     private func homeScene() -> MapScene {
         var s = MapScene(), seen = Set<String>()
-        for leg in store.upcoming.prefix(15) {
+        let until = mapDays > 0 ? Date().addingTimeInterval(Double(mapDays) * 86400) : .distantFuture
+        for leg in store.upcoming where (leg.out.best ?? .distantPast) < until {
             let pts = straight(leg)
             guard pts.count == 2 else { continue }
             let key = [leg.dep.code, leg.arr.code].sorted().joined(separator: "-")
@@ -287,6 +295,39 @@ struct FlightMap: View {
                         .stroke(l.color, style: StrokeStyle(lineWidth: l.width, lineCap: .round, lineJoin: .round))
                 }
             }
+            // airport diagrams, once you're close enough to see them
+            if camDist < 40_000 {
+                let ppm = pointsPerMeter
+                ForEach(layoutCodes, id: \.self) { code in
+                    if let L = store.layouts[code] {
+                        ForEach(Array(L.terminals.enumerated()), id: \.offset) { _, r in
+                            MapPolygon(coordinates: r).foregroundStyle(Color(hex: 0xC8CDD8).opacity(0.16)).stroke(Color(hex: 0xC8CDD8).opacity(0.5), lineWidth: 1)
+                        }
+                        ForEach(Array(L.taxiways.enumerated()), id: \.offset) { _, l in
+                            MapPolyline(coordinates: l).stroke(.white.opacity(0.14), style: StrokeStyle(lineWidth: max(1.5, 23 * ppm), lineCap: .round, lineJoin: .round))
+                        }
+                        if camDist < 6_000 {
+                            ForEach(Array(L.taxiways.enumerated()), id: \.offset) { _, l in
+                                MapPolyline(coordinates: l).stroke(Color(hex: 0xF6C445).opacity(0.5), lineWidth: 1)
+                            }
+                        }
+                        ForEach(Array(L.runways.enumerated()), id: \.offset) { _, l in
+                            MapPolyline(coordinates: l).stroke(.white.opacity(0.24), style: StrokeStyle(lineWidth: max(3, 45 * ppm), lineCap: .butt))
+                            MapPolyline(coordinates: l).stroke(.white.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [8, 8]))
+                        }
+                        ForEach(layoutLabels(L)) { lb in
+                            Annotation("", coordinate: lb.at, anchor: .center) {
+                                Text(lb.text)
+                                    .font(.system(size: lb.kind == .runway ? 13 : lb.kind == .terminal ? 12 : 11, weight: lb.kind == .gate ? .semibold : .heavy))
+                                    .foregroundStyle(lb.kind == .taxiway ? Color(hex: 0xF6C445) : lb.kind == .gate ? Color(hex: 0x9FC2FF) : .white)
+                                    .padding(.horizontal, lb.kind == .runway ? 5 : 0).padding(.vertical, lb.kind == .runway ? 1 : 0)
+                                    .background(lb.kind == .runway ? Color.black.opacity(0.55) : .clear, in: RoundedRectangle(cornerRadius: 4))
+                                    .shadow(color: .black, radius: 1.5)
+                            }
+                        }
+                    }
+                }
+            }
             ForEach(sc.pins) { p in
                 Annotation(p.label, coordinate: p.coordinate, anchor: [.dotPill, .dotCode].contains(p.style) ? UnitPoint(x: 0.06, y: 0.5) : .center) {
                     switch p.style {
@@ -335,6 +376,21 @@ struct FlightMap: View {
             MapCompass()
             MapScaleView()
         }
+        .onMapCameraChange(frequency: .onEnd) { ctx in
+            seen = ctx.rect
+            camDist = ctx.camera.distance
+            guard let w = want else { return }
+            want = nil
+            // too far out (or in, or off center): put the camera right over the wanted framing
+            let ratio = ctx.rect.size.height / max(1, w.size.height)
+            let dx = abs(ctx.rect.midX - w.midX) / max(1, w.size.width), dy = abs(ctx.rect.midY - w.midY) / max(1, w.size.height)
+            guard ratio > 0.05, ratio < 20, abs(ratio - 1) > 0.05 || dx > 0.03 || dy > 0.03 else { return }
+            let c = MKMapPoint(x: w.midX, y: w.midY).coordinate
+            withAnimation(.easeInOut(duration: 0.35)) {
+                camera = .camera(MapCamera(centerCoordinate: c, distance: ctx.camera.distance / ratio, heading: 0, pitch: 0))
+            }
+        }
+        .task(id: layoutCodes) { for c in layoutCodes { await store.loadLayout(c) } }
         .onChange(of: store.focusTick) { _, _ in apply(store.mapFocus) }
         .onChange(of: frameKey) { _, _ in apply(.fit) }
         .onAppear { apply(.fit) }
@@ -351,7 +407,7 @@ struct FlightMap: View {
         switch f {
         case .fit:
             let pts = scene.frame
-            target = pts.isEmpty ? nil : .rect(fitRect(pts, fill: 0.9))
+            target = pts.isEmpty ? nil : .rect(fitRect(pts, fill: 0.92))
         case .area(let la, let lo, let km):
             let d = km / 111.0
             target = .rect(fitRect([CLLocationCoordinate2D(latitude: la - d, longitude: lo - d), CLLocationCoordinate2D(latitude: la + d, longitude: lo + d)], fill: 1))
@@ -365,7 +421,41 @@ struct FlightMap: View {
             }
         }
         guard let target else { return }
+        if case .rect(let r) = target { want = r }
         withAnimation(.easeInOut(duration: 1.1)) { camera = target }
+    }
+
+    /// the airports whose diagrams this page can show
+    private var layoutCodes: [String] {
+        switch route {
+        case .leg(let id)?: if let l = store.leg(id) { return [l.dep.code, l.arr.code] }
+        case .aircraft(let id, let n)?: if let l = store.rotationLeg(id, n) { return [l.dep.code, l.arr.code] }
+        case .hist(let id)?:
+            if let f = store.histDetails[id] { return [f["dep"].string, f["diverted_to"].string ?? f["arr"].string].compactMap { $0 } }
+        case .nas(let k)?: if let g = store.nasGroup(k) { return [g.airport] }
+        default: break
+        }
+        return []
+    }
+
+    /// screen points per meter on the ground, for drawing runways at their real width
+    private var pointsPerMeter: CGFloat {
+        guard !seen.isNull, seen.size.height > 0 else { return 0 }
+        let lat = MKMapPoint(x: seen.midX, y: seen.midY).coordinate.latitude
+        return screen.height / CGFloat(seen.size.height * MKMetersPerMapPointAtLatitude(lat))
+    }
+
+    /// the names worth writing at this height: runways and terminals first, then taxiways, then gates
+    private func layoutLabels(_ L: AirportLayout) -> [AirportLayout.Label] {
+        let box = seen.isNull ? MKMapRect.world : seen.insetBy(dx: -seen.size.width * 0.1, dy: -seen.size.height * 0.1)
+        let ok = L.labels.filter { lb in
+            switch lb.kind {
+            case .runway, .terminal: return camDist < 40_000
+            case .taxiway: return camDist < 9_000
+            case .gate: return camDist < 3_500
+            }
+        }.filter { box.contains(MKMapPoint($0.at)) }
+        return Array(ok.prefix(160))
     }
 
     /// The whole map's rectangle (same shape as the screen) that puts the points in the open area
