@@ -62,6 +62,8 @@ struct FlightMap: View {
     /// what's on screen now, and how far up the camera is (for the airport diagrams)
     @State private var seen: MKMapRect = .null
     @State private var camDist: Double = 1e7
+    /// FAA surface radar at the airport you're looking at (yours, or your inbound's)
+    @State private var surf: [JSON] = []
     /// Map shape (Settings): flat frames routes exactly; the globe looks like Flighty's but has to zoom out further
     @AppStorage("mapGlobe") private var globe = false
     @AppStorage("mapDark") private var dark = false
@@ -359,6 +361,35 @@ struct FlightMap: View {
                 }
                 .annotationTitles(.hidden)
             }
+            // everything moving on the ground there: airplanes with transponders, yours highlighted
+            if camDist < 25_000 {
+                ForEach(Array(surf.enumerated()), id: \.offset) { _, t in
+                    if let la = t["lat"].double, let lo = t["lon"].double {
+                        let mine = t["mine"].bool
+                        Annotation("", coordinate: CLLocationCoordinate2D(latitude: la, longitude: lo), anchor: .center) {
+                            if !mine && (t["kind"].string == "vehicle" || (t["cs"].isNull && t["type"].isNull)) {
+                                Circle().fill(Color(white: 0.56)).frame(width: 5, height: 5)
+                            } else {
+                                ZStack(alignment: .leading) {
+                                    Image(systemName: "airplane")
+                                        .font(.system(size: mine ? 20 : 13, weight: .bold))
+                                        .foregroundStyle(mine ? Color.route : .white.opacity(0.9))
+                                        .shadow(color: .black.opacity(0.7), radius: 2)
+                                        .rotationEffect(.degrees((t["hdg"].double ?? 0) - 90))
+                                    if mine || camDist < 4_000, let cs = t["cs"].string {
+                                        Text(cs).font(.system(size: mine ? 12 : 10, weight: .bold)).foregroundStyle(.white)
+                                            .padding(.horizontal, 4).padding(.vertical, 1)
+                                            .background(mine ? Color.route : Color.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 4))
+                                            .offset(x: mine ? 18 : 12)
+                                            .fixedSize()
+                                    }
+                                }
+                            }
+                        }
+                        .annotationTitles(.hidden)
+                    }
+                }
+            }
             ForEach(sc.planes) { pl in
                 Annotation("", coordinate: pl.coordinate, anchor: .center) {
                     Image(systemName: "airplane")
@@ -390,8 +421,18 @@ struct FlightMap: View {
                 camera = .camera(MapCamera(centerCoordinate: c, distance: ctx.camera.distance / ratio, heading: 0, pitch: 0))
             }
         }
+        .task(id: surfQuery) {
+            guard let q = surfQuery else { surf = []; return }
+            while !Task.isCancelled {
+                if let r = try? await API.get(q, timeout: 8, keep: false), !r.1 {
+                    surf = r.0["targets"].array.filter { $0["mine"].bool || ($0["xpdr"].bool && $0["kind"].string != "vehicle") || $0["kind"].string == "vehicle" }
+                }
+                try? await Task.sleep(for: .seconds(surf.isEmpty ? 20 : 3))
+            }
+        }
         .task(id: layoutCodes) { for c in layoutCodes { await store.loadLayout(c) } }
         .onChange(of: store.focusTick) { _, _ in apply(store.mapFocus) }
+        .onChange(of: area) { _, _ in apply(store.mapFocus) }
         .onChange(of: frameKey) { _, _ in apply(.fit) }
         .onAppear { apply(.fit) }
     }
@@ -425,10 +466,32 @@ struct FlightMap: View {
         withAnimation(.easeInOut(duration: 1.1)) { camera = target }
     }
 
+    /// the surface radar request for the airport nearest the middle of the screen, once zoomed in on it
+    private var surfQuery: String? {
+        guard camDist < 25_000, !seen.isNull else { return nil }
+        var lid = "", ident: String?, aps: [Airport] = []
+        switch route {
+        case .leg(let id)?:
+            guard let l = store.leg(id) else { return nil }
+            lid = id
+            aps = [l.dep, l.arr, Airport(j: l.inbound["origin"])]
+        case .aircraft(let id, let n)?:
+            guard let l = store.rotationLeg(id, n) else { return nil }
+            lid = id
+            ident = store.rotations[id]?[safe: n]?["ident"].string
+            aps = [l.dep, l.arr]
+        default: return nil
+        }
+        let mid = MKMapPoint(x: seen.midX, y: seen.midY)
+        let best = aps.compactMap { a in a.coordinate.map { (a.code, MKMapPoint($0).distance(to: mid)) } }.min { $0.1 < $1.1 }
+        guard let best, best.1 < 20_000 else { return nil }
+        return "api/surface/\(lid)?ap=\(best.0)" + (ident.map { "&ident=\($0.replacingOccurrences(of: " ", with: ""))" } ?? "")
+    }
+
     /// the airports whose diagrams this page can show
     private var layoutCodes: [String] {
         switch route {
-        case .leg(let id)?: if let l = store.leg(id) { return [l.dep.code, l.arr.code] }
+        case .leg(let id)?: if let l = store.leg(id) { return [l.dep.code, l.arr.code, Airport(j: l.inbound["origin"]).code].filter { $0 != "?" } }
         case .aircraft(let id, let n)?: if let l = store.rotationLeg(id, n) { return [l.dep.code, l.arr.code] }
         case .hist(let id)?:
             if let f = store.histDetails[id] { return [f["dep"].string, f["diverted_to"].string ?? f["arr"].string].compactMap { $0 } }

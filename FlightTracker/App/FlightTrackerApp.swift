@@ -51,7 +51,9 @@ struct RootView: View {
             let W = geo.size.width, H = geo.size.height, inset = safeTop()
             let ys = stops(H, inset)
             // where routes are framed: the open map above the sheet's middle stop, clear of the buttons
-            let area = CGRect(x: 18, y: inset + 50, width: W - 18 - 74, height: max(120, (ys[.mid] ?? H * 0.45) - inset - 50 - 24))
+            // follows the sheet: pulled down to the peek, the routes get the taller space (full keeps the middle's)
+            let sheetY = (stop == .full ? ys[.mid] : ys[stop]) ?? H * 0.45
+            let area = CGRect(x: 18, y: inset + 50, width: W - 18 - 74, height: max(120, sheetY - inset - 50 - 24))
             ZStack(alignment: .top) {
                 FlightMap(route: nav.path.last, tab: tab, screen: geo.size, area: area)
                 MapButtons(route: nav.path.last, airports: { open(.airports) })
