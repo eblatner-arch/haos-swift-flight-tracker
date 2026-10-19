@@ -304,3 +304,16 @@ let typeNames: [String: String] = [
     "A320": "Airbus A320", "A20N": "Airbus A320neo", "A321": "Airbus A321", "A21N": "Airbus A321neo",
     "E75L": "Embraer 175", "E175": "Embraer 175", "CRJ2": "CRJ-200", "CRJ7": "CRJ-700", "CRJ9": "CRJ-900",
 ]
+
+extension StatusLine {
+    /// An FAA takeoff slot (EDCT) leads the banner, in amber: what it's for, the slot, how late it makes you.
+    func withEDCT(_ leg: Leg) -> StatusLine {
+        guard leg.phase == "scheduled" || leg.phase == "taxi_out", let e = leg.edct else { return self }
+        let prog = e.program ?? leg.arr.code
+        let reason = leg.nas.first { $0["airport"].string == prog && ["gdp", "gs"].contains($0["kind"].string ?? "") }?["reason"].string?.lowercased()
+        let late = (leg.off.scheduled ?? leg.out.scheduled.map { $0.addingTimeInterval(600) }).map { Int((e.at.timeIntervalSince($0) / 60).rounded()) }
+        let lateTxt = late.map { $0 >= 1 ? " (\(Fmt.span(Double($0 * 60))) late)" : "" } ?? ""
+        let why = "Departures to \(prog) are held" + (reason.map { " for \($0)" } ?? "") + "."
+        return StatusLine(head: head, sub: "\(why) Takeoff slot \(Fmt.time(e.at, leg.dep.timeZone))\(lateTxt).", tone: Th.amber)
+    }
+}

@@ -73,7 +73,7 @@ struct FlightPage: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
                         DetailHeader(badge: leg.airlineCode, sub: sub, title: "\(leg.dep.city) to \(leg.arr.city)") { nav.back() }
-                        StatusBanner(status: StatusLine(leg)).padding(.horizontal, -14)
+                        StatusBanner(status: StatusLine(leg).withEDCT(leg)).padding(.horizontal, -14)
                         ForEach(nasGroups([leg]).filter { $0.major }) { NasAlertCard(g: $0) }
                         EndpointView(leg: leg, departure: true)
                         MidLine(leg: leg)

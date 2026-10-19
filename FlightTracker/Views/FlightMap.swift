@@ -302,11 +302,7 @@ struct FlightMap: View {
             surfaceContent
             ForEach(sc.planes) { pl in
                 Annotation("", coordinate: pl.coordinate, anchor: .center) {
-                    Image(systemName: "airplane")
-                        .font(.system(size: pl.size, weight: .bold))
-                        .foregroundStyle(pl.color)
-                        .shadow(color: .black.opacity(0.6), radius: 3)
-                        .rotationEffect(.degrees(pl.heading - 90))
+                    OutlinedPlane(size: pl.size, color: pl.color, heading: pl.heading)
                 }
                 .annotationTitles(.hidden)
             }
@@ -566,11 +562,7 @@ struct SurfaceTargetView: View {
             Circle().fill(Color(white: 0.56)).frame(width: 5, height: 5)
         } else {
             ZStack(alignment: .leading) {
-                Image(systemName: "airplane")
-                    .font(.system(size: (mine ? 16 : 10) + 5 * zoom, weight: .bold))
-                    .foregroundStyle(mine ? Color.route : Color.white.opacity(0.9))
-                    .shadow(color: .black.opacity(0.7), radius: 2)
-                    .rotationEffect(.degrees((t["hdg"].double ?? 0) - 90))
+                OutlinedPlane(size: (mine ? 16 : 11) + 5 * zoom, color: mine ? Color.route : .white, heading: t["hdg"].double ?? 0)
                 if let cs = t["cs"].string ?? t["squawk"].string {
                     Text(cs).font(.system(size: (mine ? 10 : 8) + 3 * zoom, weight: .bold)).foregroundStyle(.white)
                         .padding(.horizontal, 3 + zoom).padding(.vertical, 1)
@@ -580,5 +572,26 @@ struct SurfaceTargetView: View {
                 }
             }
         }
+    }
+}
+
+/// an airplane with a crisp dark outline (like Flighty's), so it reads on runways and satellite
+struct OutlinedPlane: View {
+    let size: CGFloat
+    let color: Color
+    let heading: Double
+    var body: some View {
+        let w = max(1, size / 14)
+        let glyph = Image(systemName: "airplane").font(.system(size: size, weight: .bold))
+        ZStack {
+            ForEach(0..<8, id: \.self) { i in
+                let a = Double(i) * .pi / 4
+                glyph.foregroundStyle(.black).offset(x: cos(a) * w, y: sin(a) * w)
+            }
+            glyph.foregroundStyle(color)
+        }
+        .shadow(color: .black.opacity(0.35), radius: 1.5, y: 1)
+        .rotationEffect(.degrees(heading - 90))
+        .drawingGroup()
     }
 }
