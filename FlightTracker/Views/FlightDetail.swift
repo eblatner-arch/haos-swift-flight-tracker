@@ -107,7 +107,7 @@ struct FlightPage: View {
                                     pill(mine ? "Make it a friend's flight" : "It's my flight") {
                                         Task { await store.setKind(leg.id, mine ? "friend" : "manual") }
                                     }
-                                    Button { confirmRemove = true } label: {
+                                    Button { if Nav.blocked { return }; confirmRemove = true } label: {
                                         Text("Remove").font(.system(size: 16, weight: .semibold)).foregroundStyle(Th.red)
                                             .padding(.horizontal, 15).padding(.vertical, 10)
                                             .background(Th.red.opacity(0.15), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -189,7 +189,7 @@ struct FlightPage: View {
     }
 
     private func pill(_ t: String, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) { pillLabel(t) }.buttonStyle(.plain)
+        Button(action: { if !Nav.blocked { action() } }) { pillLabel(t) }.buttonStyle(.plain)
     }
     private func pillLabel(_ t: String) -> some View {
         Text(t).font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
@@ -465,7 +465,7 @@ struct InboundCard: View {
                 .background(Th.card2, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(rot.prefix(3).enumerated()), id: \.offset) { i, r in
-                        Button { nav.push(.aircraft(base.0, base.1 + i)) } label: { InboundLegRow(r: r).contentShape(Rectangle()) }.buttonStyle(.plain)
+                        Button { if Nav.blocked { return }; nav.push(.aircraft(base.0, base.1 + i)) } label: { InboundLegRow(r: r).contentShape(Rectangle()) }.buttonStyle(.plain)
                     }
                     if let last = rot.prefix(3).last { TimelineNode(code: Airport(j: last["origin"]).code, color: phaseColor(last["phase"].string)) }
                 }
@@ -477,7 +477,7 @@ struct InboundCard: View {
                     }
                 }
                 if rot.count > 3 {
-                    Button { nav.push(.aircraft(base.0, base.1 + 3)) } label: {
+                    Button { if Nav.blocked { return }; nav.push(.aircraft(base.0, base.1 + 3)) } label: {
                         HStack(spacing: 10) {
                             Text("\(rot.count - 3)").font(.system(size: 12, weight: .bold)).frame(width: 20, height: 20).overlay(Circle().stroke(Th.muted))
                             Text("Show More Flights").font(.system(size: 15)).foregroundStyle(Th.muted)
@@ -684,7 +684,7 @@ struct Fold<Content: View>: View {
     @State private var open = false
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Button { withAnimation(.easeInOut(duration: 0.2)) { open.toggle() } } label: {
+            Button { if Nav.blocked { return }; withAnimation(.easeInOut(duration: 0.2)) { open.toggle() } } label: {
                 HStack {
                     Text(title).font(.system(size: 18, weight: .bold))
                     Spacer()

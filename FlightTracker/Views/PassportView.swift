@@ -30,7 +30,7 @@ struct PassportView: View {
                     Image(systemName: "magnifyingglass").foregroundStyle(Th.muted)
                     TextField("Flight, airport, tail, aircraft, date", text: $query)
                         .textInputAutocapitalization(.characters).autocorrectionDisabled().focused($searching)
-                    if !query.isEmpty { Button { query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Th.muted) }.buttonStyle(.plain) }
+                    if !query.isEmpty { Button { if Nav.blocked { return }; query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Th.muted) }.buttonStyle(.plain) }
                 }
                 .padding(.horizontal, 12).padding(.vertical, 10)
                 .background(Th.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -51,7 +51,7 @@ struct PassportView: View {
                             .padding(.top, 16).padding(.bottom, 6)
                             ForEach(Array(g.1.enumerated()), id: \.offset) { _, f in
                                 if let id = f["id"].string {
-                                    Button { nav.push(.hist(id)) } label: { PassRow(f: f) }.buttonStyle(.plain)
+                                    Button { if Nav.blocked { return }; nav.push(.hist(id)) } label: { PassRow(f: f) }.buttonStyle(.plain)
                                 }
                             }
                         }

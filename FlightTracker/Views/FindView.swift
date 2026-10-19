@@ -45,14 +45,14 @@ struct FindView: View {
                     Image(systemName: "magnifyingglass").foregroundStyle(Th.muted)
                     TextField("Flight, airport, tail, aircraft, month, >30…", text: $q)
                         .textInputAutocapitalization(.characters).autocorrectionDisabled().focused($typing)
-                    if !q.isEmpty { Button { q = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Th.muted) }.buttonStyle(.plain) }
+                    if !q.isEmpty { Button { if Nav.blocked { return }; q = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Th.muted) }.buttonStyle(.plain) }
                 }
                 .padding(.horizontal, 12).padding(.vertical, 11)
                 .background(Th.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 FlowLayout(spacing: 7) {
                     ForEach(statusChips, id: \.0) { c in
                         let on = chips.contains(c.0)
-                        Button { if on { chips.remove(c.0) } else { chips.insert(c.0) } } label: {
+                        Button { if Nav.blocked { return }; if on { chips.remove(c.0) } else { chips.insert(c.0) } } label: {
                             Text(c.1).font(.system(size: 14, weight: .semibold))
                                 .foregroundStyle(on ? .white : Th.muted)
                                 .padding(.horizontal, 12).padding(.vertical, 7)
@@ -67,7 +67,7 @@ struct FindView: View {
                     if !g.0.isEmpty { Text(g.0).font(.system(size: 19, weight: .bold)).padding(.top, 8) }
                     VStack(spacing: 0) {
                         ForEach(Array(g.1.enumerated()), id: \.offset) { _, f in
-                            Button { if let id = f["id"].string { nav.push(.hist(id)) } } label: { FindRow(f: f) }.buttonStyle(.plain)
+                            Button { if Nav.blocked { return }; if let id = f["id"].string { nav.push(.hist(id)) } } label: { FindRow(f: f) }.buttonStyle(.plain)
                         }
                     }
                     .padding(.horizontal, 12)

@@ -41,7 +41,7 @@ struct RoundButton: View {
     var fill: Color = Th.card2
     let action: () -> Void
     var body: some View {
-        Button(action: action) {
+        Button(action: { if !Nav.blocked { action() } }) {
             Group {
                 if let label { Text(label).font(.system(size: 17, weight: .bold)).foregroundStyle(.black) }
                 else { Image(systemName: symbol).font(.system(size: 15, weight: .bold)).foregroundStyle(.white) }
@@ -76,7 +76,7 @@ struct TabBar: View {
         HStack(spacing: 10) {
         HStack(spacing: 4) {
             ForEach(Tab.allCases, id: \.self) { t in
-                Button { tab = t } label: {
+                Button { if Nav.blocked { return }; tab = t } label: {
                     VStack(spacing: 3) {
                         Image(systemName: t.icon).font(.system(size: 19, weight: .semibold))
                         Text(t.rawValue).font(.system(size: 11, weight: .semibold))
@@ -150,7 +150,7 @@ struct FlightsHome: View {
                     VStack(spacing: 0) {
                         ForEach(Array(live.prefix(40).enumerated()), id: \.element.id) { i, leg in
                             if i > 0, let lay = layover(live[i - 1], leg) { lay }
-                            Button { open(.leg(leg.id)) } label: { FlightRowView(leg: leg) }.buttonStyle(.plain)
+                            Button { if Nav.blocked { return }; open(.leg(leg.id)) } label: { FlightRowView(leg: leg) }.buttonStyle(.plain)
                         }
                     }
                 }
@@ -181,7 +181,7 @@ struct FlightsHome: View {
                     SectionHead(title: "Recent", trailing: nil)
                     VStack(spacing: 0) {
                         ForEach(Array(recent)) { leg in
-                            Button { open(.leg(leg.id)) } label: { FlightRowView(leg: leg) }.buttonStyle(.plain)
+                            Button { if Nav.blocked { return }; open(.leg(leg.id)) } label: { FlightRowView(leg: leg) }.buttonStyle(.plain)
                         }
                     }
                 }
@@ -312,7 +312,7 @@ struct NasAlertCard: View {
         let end = n["end"].date, start = n["start"].date
         let when = end.map { e in (start.map { $0 > Date() ? Fmt.time($0, g.tz) + "–" : "until " } ?? "until ") + Fmt.time(e, g.tz) + " " + Fmt.zone(e, g.tz) } ?? ""
         VStack(alignment: .leading, spacing: 8) {
-            Button { withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() } } label: {
+            Button { if Nav.blocked { return }; withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() } } label: {
                 HStack(spacing: 10) {
                     Text(g.airport).font(.system(size: 17, weight: .heavy))
                     Text(label).font(.system(size: 16, weight: .bold)).foregroundStyle(color)
@@ -410,7 +410,7 @@ struct AlertsCard: View {
     var body: some View {
         VStack(spacing: 0) {
             ForEach(Array(list.enumerated()), id: \.offset) { i, a in
-                Button { if let l = a["leg"].string { open(.leg(l)) } } label: {
+                Button { if Nav.blocked { return }; if let l = a["leg"].string { open(.leg(l)) } } label: {
                     HStack(alignment: .top, spacing: 12) {
                         Circle().fill(color(a["level"].string)).frame(width: 9, height: 9).padding(.top, 6)
                         VStack(alignment: .leading, spacing: 2) {

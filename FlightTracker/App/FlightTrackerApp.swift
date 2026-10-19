@@ -167,6 +167,8 @@ struct SheetHost<Content: View>: View {
     @ViewBuilder var content: Content
     @State private var drag: CGFloat = 0
     @State private var dragging = false
+    /// the keyboard's height over the sheet (the screen ignores the keyboard, so the page makes room itself)
+    @State private var kb: CGFloat = 0
 
     var body: some View {
         let y = max(ys[.full]!, (ys[stop] ?? 300) + drag)
@@ -176,8 +178,21 @@ struct SheetHost<Content: View>: View {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .scrollDisabled(stop != .full || dragging)
+                .scrollDismissesKeyboard(.interactively)
+                .padding(.bottom, kb)
         }
         .frame(height: height, alignment: .top)
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { n in
+            guard let f = n.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+            let h = max(0, UIScreen.main.bounds.height - f.minY)
+            withAnimation(.easeOut(duration: 0.25)) {
+                kb = h > 0 ? max(0, h - 60) : 0
+                if h > 0 { stop = .full; drag = 0 }      // typing: the whole page, above the keyboard
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            withAnimation(.easeOut(duration: 0.25)) { kb = 0 }
+        }
         .background(Th.sheet)
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: 26, topTrailingRadius: 26, style: .continuous))
         .compositingGroup()
@@ -202,6 +217,7 @@ struct SheetHost<Content: View>: View {
             .onEnded { v in
                 guard dragging else { return }
                 nav.suppressUntil = Date().addingTimeInterval(0.4)
+                if v.translation.height > 0 { hideKeyboard() }
                 let aim = (ys[stop] ?? 0) + v.predictedEndTranslation.height
                 let target = [SheetStop.full, .mid, .peek].min { abs((ys[$0] ?? 0) - aim) < abs((ys[$1] ?? 0) - aim) } ?? stop
                 let cur = (ys[stop] ?? 0) + v.translation.height
@@ -218,8 +234,11 @@ struct SheetHost<Content: View>: View {
 final class Nav {
     var path: [Route] = []
     /// taps are ignored until then (the finger that just moved the sheet lifted over a row)
-    @ObservationIgnored var suppressUntil = Date.distantPast
-    var suppressed: Bool { Date() < suppressUntil }
+    var suppressUntil: Date { get { Nav.blockUntil } set { Nav.blockUntil = newValue } }
+    var suppressed: Bool { Nav.blocked }
+    /// shared by every button in the sheet: a touch that moved the sheet isn't a tap
+    static var blockUntil = Date.distantPast
+    static var blocked: Bool { Date() < blockUntil }
     func push(_ r: Route) { if !suppressed { path.append(r) } }
     func back() { _ = path.popLast() }
 }
@@ -339,3 +358,8 @@ struct TowerShape: Shape {
     }
 }
 
+
+/// put the keyboard away (pulling the sheet down, or a tap outside the field)
+func hideKeyboard() {
+    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+}

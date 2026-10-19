@@ -68,7 +68,7 @@ struct AirportsView: View {
                     let when = n["end"].date.map { e in (n["start"].date.map { $0 > Date() ? Fmt.time($0, ap.timeZone) + "–" : "until " } ?? "until ") + Fmt.time(e, ap.timeZone) } ?? ""
                     let sub = [n["detail"].string, n["reason"].string?.capitalized, when.isEmpty ? nil : when].compactMap { $0 }.joined(separator: " · ")
                     let tap = ["gs", "gdp"].contains(n["kind"].string ?? "") && !n["scope"].array.isEmpty
-                    Button { if tap, let k = n["key"].string { nav.push(.nas(k)) } } label: {
+                    Button { if Nav.blocked { return }; if tap, let k = n["key"].string { nav.push(.nas(k)) } } label: {
                     VStack(alignment: .leading, spacing: 1) {
                         Text((n["label"].string ?? "") + (tap ? " ›" : "")).font(.system(size: 15, weight: .bold))
                             .foregroundStyle(["gs", "closure"].contains(n["kind"].string ?? "") ? Th.red : n["kind"].string == "gdp" ? Color(hex: 0xFF8A5C) : .white)

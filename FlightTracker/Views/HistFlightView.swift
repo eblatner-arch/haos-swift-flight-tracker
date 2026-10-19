@@ -21,10 +21,10 @@ struct HistFlightView: View {
                                      title: "\(P.dep.city) to \(P.arr.city)") { nav.back() }
                         StatusBanner(status: banner(f, am, cont)).padding(.horizontal, -14)
                         if let c = f["continued_by"].string {
-                            Button { nav.push(.hist(c)) } label: { Text((f["continued_by_label"].string ?? "Continuation") + " ›").foregroundStyle(Th.accent) }.buttonStyle(.plain)
+                            Button { if Nav.blocked { return }; nav.push(.hist(c)) } label: { Text((f["continued_by_label"].string ?? "Continuation") + " ›").foregroundStyle(Th.accent) }.buttonStyle(.plain)
                         }
                         if let c = f["continuation_of"].string {
-                            Button { nav.push(.hist(c)) } label: { Text((f["continuation_of_label"].string ?? "Original flight") + " ›").foregroundStyle(Th.accent) }.buttonStyle(.plain)
+                            Button { if Nav.blocked { return }; nav.push(.hist(c)) } label: { Text((f["continuation_of_label"].string ?? "Original flight") + " ›").foregroundStyle(Th.accent) }.buttonStyle(.plain)
                         }
                         EndpointView(leg: P, departure: true)
                         MidLine(leg: P)
@@ -32,7 +32,7 @@ struct HistFlightView: View {
                         TimesCard(leg: P)
                         AircraftCard(leg: P)
                         details(f)
-                        Button { confirmDelete = true } label: {
+                        Button { if Nav.blocked { return }; confirmDelete = true } label: {
                             Text(failed ? "Couldn't delete it. Try again" : "Delete from History").font(.system(size: 16, weight: .semibold)).foregroundStyle(Th.red)
                                 .padding(.horizontal, 15).padding(.vertical, 10)
                                 .background(Th.red.opacity(0.15), in: RoundedRectangle(cornerRadius: 12, style: .continuous))

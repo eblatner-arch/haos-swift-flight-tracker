@@ -72,7 +72,7 @@ struct LookupLog: View {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(entries) { h in row(h) }
                 if more > 0, let loadMore {
-                    Button {
+                    Button { if Nav.blocked { return };
                         loading = true
                         Task { await loadMore(); loading = false }
                     } label: {
