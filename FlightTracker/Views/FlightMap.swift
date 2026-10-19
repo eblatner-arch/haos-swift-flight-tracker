@@ -298,37 +298,7 @@ struct FlightMap: View {
                 }
             }
             layoutContent
-            ForEach(sc.pins) { p in
-                Annotation(p.label, coordinate: p.coordinate, anchor: [.dotPill, .dotCode].contains(p.style) ? UnitPoint(x: 0.06, y: 0.5) : .center) {
-                    switch p.style {
-                    case .dot:
-                        Circle().fill(p.color).frame(width: 8, height: 8).overlay(Circle().stroke(.white, lineWidth: 1.5))
-                    case .text:
-                        Text(p.label).font(.system(size: 12, weight: .heavy)).foregroundStyle(p.color)
-                            .shadow(color: .black, radius: 1.5).shadow(color: .black.opacity(0.8), radius: 3)
-                    case .dotCode:
-                        HStack(spacing: 4) {
-                            Circle().fill(p.color).frame(width: 11, height: 11).overlay(Circle().stroke(.white, lineWidth: 1.5))
-                            Text(p.label).font(.system(size: 11, weight: .heavy)).foregroundStyle(.white).shadow(color: .black, radius: 2)
-                        }
-                    case .dotPill:
-                        HStack(spacing: 5) {
-                            Circle().fill(p.color).frame(width: 13, height: 13).overlay(Circle().stroke(.white, lineWidth: 2))
-                            Text(p.label).font(.system(size: 12, weight: .bold, design: .rounded))
-                                .padding(.horizontal, 7).padding(.vertical, 3)
-                                .background(p.color, in: RoundedRectangle(cornerRadius: 7))
-                                .foregroundStyle(.white)
-                        }
-                    case .pill:
-                        Text(p.label)
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
-                            .padding(.horizontal, 6).padding(.vertical, 3)
-                            .background(p.color, in: RoundedRectangle(cornerRadius: 6))
-                            .foregroundStyle(.white)
-                    }
-                }
-                .annotationTitles(.hidden)
-            }
+            pinContent(sc)
             surfaceContent
             ForEach(sc.planes) { pl in
                 Annotation("", coordinate: pl.coordinate, anchor: .center) {
@@ -375,6 +345,40 @@ struct FlightMap: View {
         .onChange(of: area) { _, _ in apply(store.mapFocus) }
         .onChange(of: frameKey) { _, _ in apply(.fit) }
         .onAppear { apply(.fit) }
+    }
+
+    @MapContentBuilder private func pinContent(_ sc: MapScene) -> some MapContent {
+    ForEach(sc.pins) { p in
+        Annotation(p.label, coordinate: p.coordinate, anchor: [.dotPill, .dotCode].contains(p.style) ? UnitPoint(x: 0.06, y: 0.5) : .center) {
+            switch p.style {
+            case .dot:
+                Circle().fill(p.color).frame(width: 8, height: 8).overlay(Circle().stroke(.white, lineWidth: 1.5))
+            case .text:
+                Text(p.label).font(.system(size: 12, weight: .heavy)).foregroundStyle(p.color)
+                    .shadow(color: .black, radius: 1.5).shadow(color: .black.opacity(0.8), radius: 3)
+            case .dotCode:
+                HStack(spacing: 4) {
+                    Circle().fill(p.color).frame(width: 11, height: 11).overlay(Circle().stroke(.white, lineWidth: 1.5))
+                    Text(p.label).font(.system(size: 11, weight: .heavy)).foregroundStyle(.white).shadow(color: .black, radius: 2)
+                }
+            case .dotPill:
+                HStack(spacing: 5) {
+                    Circle().fill(p.color).frame(width: 13, height: 13).overlay(Circle().stroke(.white, lineWidth: 2))
+                    Text(p.label).font(.system(size: 12, weight: .bold, design: .rounded))
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(p.color, in: RoundedRectangle(cornerRadius: 7))
+                        .foregroundStyle(.white)
+                }
+            case .pill:
+                Text(p.label)
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .padding(.horizontal, 6).padding(.vertical, 3)
+                    .background(p.color, in: RoundedRectangle(cornerRadius: 6))
+                    .foregroundStyle(.white)
+            }
+        }
+        .annotationTitles(.hidden)
+    }
     }
 
     @MapContentBuilder private var layoutContent: some MapContent {
@@ -471,6 +475,61 @@ struct FlightMap: View {
         guard let r else { return }
         want = r
         withAnimation(.easeInOut(duration: 1.1)) { camera = .rect(r) }
+    }
+
+    /// the surface radar request for the airport nearest the middle of the screen, once zoomed in on it
+    private var surfQuery: String? {
+        guard camDist < 25_000, !seen.isNull else { return nil }
+        var lid = "", ident: String?, aps: [Airport] = []
+        switch route {
+        case .leg(let id)?:
+            guard let l = store.leg(id) else { return nil }
+            lid = id
+            aps = [l.dep, l.arr, Airport(j: l.inbound["origin"])]
+        case .aircraft(let id, let n)?:
+            guard let l = store.rotationLeg(id, n) else { return nil }
+            lid = id
+            ident = store.rotations[id]?[safe: n]?["ident"].string
+            aps = [l.dep, l.arr]
+        default: return nil
+        }
+        let mid = MKMapPoint(x: seen.midX, y: seen.midY)
+        let best = aps.compactMap { a in a.coordinate.map { (a.code, MKMapPoint($0).distance(to: mid)) } }.min { $0.1 < $1.1 }
+        guard let best, best.1 < 20_000 else { return nil }
+        return "api/surface/\(lid)?ap=\(best.0)" + (ident.map { "&ident=\($0.replacingOccurrences(of: " ", with: ""))" } ?? "")
+    }
+
+    /// the airports whose diagrams this page can show
+    private var layoutCodes: [String] {
+        switch route {
+        case .leg(let id)?: if let l = store.leg(id) { return [l.dep.code, l.arr.code, Airport(j: l.inbound["origin"]).code].filter { $0 != "?" } }
+        case .aircraft(let id, let n)?: if let l = store.rotationLeg(id, n) { return [l.dep.code, l.arr.code] }
+        case .hist(let id)?:
+            if let f = store.histDetails[id] { return [f["dep"].string, f["diverted_to"].string ?? f["arr"].string].compactMap { $0 } }
+        case .nas(let k)?: if let g = store.nasGroup(k) { return [g.airport] }
+        default: break
+        }
+        return []
+    }
+
+    /// screen points per meter on the ground, for drawing runways at their real width
+    private var pointsPerMeter: CGFloat {
+        guard !seen.isNull, seen.size.height > 0 else { return 0 }
+        let lat = MKMapPoint(x: seen.midX, y: seen.midY).coordinate.latitude
+        return screen.height / CGFloat(seen.size.height * MKMetersPerMapPointAtLatitude(lat))
+    }
+
+    /// the names worth writing at this height: runways and terminals first, then taxiways, then gates
+    private func layoutLabels(_ L: AirportLayout) -> [AirportLayout.Label] {
+        let box = seen.isNull ? MKMapRect.world : seen.insetBy(dx: -seen.size.width * 0.1, dy: -seen.size.height * 0.1)
+        let ok = L.labels.filter { lb in
+            switch lb.kind {
+            case .runway, .terminal: return camDist < 40_000
+            case .taxiway: return camDist < 9_000
+            case .gate: return camDist < 3_500
+            }
+        }.filter { box.contains(MKMapPoint($0.at)) }
+        return Array(ok.prefix(160))
     }
 
     /// The whole map's rectangle (same shape as the screen) that puts the points in the open area
