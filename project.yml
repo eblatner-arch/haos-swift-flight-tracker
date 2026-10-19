@@ -7,7 +7,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.10"
-    MARKETING_VERSION: "0.1.0"
+    MARKETING_VERSION: "0.2.0"
     CURRENT_PROJECT_VERSION: "1"
     DEVELOPMENT_TEAM: ""          # pick your team in Xcode (Signing & Capabilities)
     CODE_SIGN_STYLE: Automatic
@@ -35,4 +35,4 @@ targets:
           NSAllowsLocalNetworking: true
         CFBundleURLTypes:
           - CFBundleURLName: com.ericsflights.flighttracker
-            CFBundleURLSchemes: [flighttracker]
+            CFBundleURLSchemes: [ericsflights]

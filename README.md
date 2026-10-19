@@ -17,7 +17,7 @@ Nothing in the add-on has to change for it to work.
 - The map: your flights' routes, or one flight's filed route, flown track and the airplane, live every 5 s;
   buttons to zoom to the route, the airplane or either airport
 - Works offline: the last answers from the add-on are kept on the phone
-- Opens a flight from a link: `flighttracker://leg/<id>` (for Home Assistant notifications later)
+- Opens a flight from a link: `ericsflights://leg/<id>` (for Home Assistant notifications later)
 
 ## Build and install (Mac)
 
