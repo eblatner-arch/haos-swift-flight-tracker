@@ -1,0 +1,51 @@
+# Runs the app in the iPhone simulator against a stand-in add-on (tools/mock_addon.py, made-up
+# flights) and takes screenshots, pushed to the "screens" branch. Run it from the Actions tab.
+name: Screenshots
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  screens:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Generate the Xcode project
+        run: brew install xcodegen && xcodegen generate
+      - name: Pick an iPhone simulator
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin)['devices']
+          c=[x for k,v in d.items() if 'iOS' in k for x in v if x['name'].startswith('iPhone') and 'Pro Max' in x['name']]
+          c=c or [x for k,v in d.items() if 'iOS' in k for x in v if x['name'].startswith('iPhone')]
+          print(c[-1]['udid'])")
+          echo "UDID=$UDID" >> $GITHUB_ENV
+          xcrun simctl boot "$UDID"
+      - name: Build for the simulator
+        run: |
+          set -o pipefail
+          xcodebuild -project FlightTracker.xcodeproj -scheme FlightTracker -destination "id=$UDID" \
+            -derivedDataPath dd CODE_SIGNING_ALLOWED=NO build 2>&1 | tail -3
+      - name: Stand-in add-on
+        run: |
+          mkdir -p /tmp/www && (python3 tools/mock_addon.py /tmp/www 8765 > /tmp/mock.log 2>&1 &)
+          sleep 2 && curl -s localhost:8765/api/state | head -c 200
+      - name: Run and take screenshots
+        run: |
+          mkdir -p shots
+          xcrun simctl install "$UDID" dd/Build/Products/Debug-iphonesimulator/Flights.app
+          xcrun simctl spawn "$UDID" defaults write com.ericsflights.flighttracker server "http://localhost:8765/"
+          xcrun simctl launch "$UDID" com.ericsflights.flighttracker
+          sleep 25 && xcrun simctl io "$UDID" screenshot shots/1-home.png
+          xcrun simctl openurl "$UDID" "flighttracker://leg/L1"
+          sleep 15 && xcrun simctl io "$UDID" screenshot shots/2-flight.png
+          sleep 10 && xcrun simctl io "$UDID" screenshot shots/3-flight-later.png
+          tail -20 /tmp/mock.log > shots/mock.log || true
+      - name: Push to the screens branch
+        run: |
+          cd shots
+          git init -q && git checkout -q -b screens
+          git add -A
+          git -c user.name=ci -c user.email=ci@users.noreply.github.com commit -qm "Screenshots of ${GITHUB_SHA::7}"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${GITHUB_REPOSITORY}.git" screens
