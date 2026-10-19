@@ -17,6 +17,7 @@ struct MapScene {
         let coordinate: CLLocationCoordinate2D
         var color: Color = .route
         var small = false
+        var dot = false   // a colored dot with the code beside it (FAA status)
     }
     struct Plane: Identifiable {
         let id: String
@@ -55,6 +56,7 @@ struct FlightMap: View {
             if let leg = store.rotationLeg(id, n) { return rotScene(leg, store.rotations[id]?[safe: n]) }
         case .airports?:
             return airportsScene()
+
         case nil:
             if tab == .passport { return passScene() }
         }
@@ -142,7 +144,7 @@ struct FlightMap: View {
             let kinds = a["items"].array.compactMap { $0["kind"].string }
             let red = kinds.contains { ["gs", "closure", "gdp"].contains($0) }
             let c = CLLocationCoordinate2D(latitude: la, longitude: lo)
-            s.pins.append(.init(id: code, label: code, coordinate: c, color: red ? Th.red : Th.amber))
+            s.pins.append(.init(id: code, label: code, coordinate: c, color: red ? Th.red : Th.amber, dot: true))
             s.frame.append(c)
         }
         if s.frame.isEmpty { s.frame = [CLLocationCoordinate2D(latitude: 48, longitude: -124), CLLocationCoordinate2D(latitude: 25, longitude: -68)] }
@@ -190,8 +192,13 @@ struct FlightMap: View {
                 }
             }
             ForEach(sc.pins) { p in
-                Annotation(p.label, coordinate: p.coordinate, anchor: .center) {
-                    if p.small {
+                Annotation(p.label, coordinate: p.coordinate, anchor: p.dot ? UnitPoint(x: 0.08, y: 0.5) : .center) {
+                    if p.dot {
+                        HStack(spacing: 4) {
+                            Circle().fill(p.color).frame(width: 11, height: 11).overlay(Circle().stroke(.white, lineWidth: 1.5))
+                            Text(p.label).font(.system(size: 11, weight: .heavy)).foregroundStyle(.white).shadow(color: .black, radius: 2)
+                        }
+                    } else if p.small {
                         Circle().fill(Color.route).stroke(.white, lineWidth: 1).frame(width: 6, height: 6)
                     } else {
                         Text(p.label)

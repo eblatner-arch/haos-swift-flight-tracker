@@ -37,6 +37,7 @@ struct AirportsView: View {
             }
             .padding(.horizontal, 14)
             .padding(.bottom, 100)
+            .sheetScroll()
         }
         .toolbar(.hidden, for: .navigationBar)
         .task {

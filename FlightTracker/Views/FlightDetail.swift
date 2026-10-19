@@ -112,6 +112,7 @@ struct FlightPage: View {
                     }
                     .padding(.horizontal, 14)
                     .padding(.bottom, 100)
+            .sheetScroll()
                 }
     }
 

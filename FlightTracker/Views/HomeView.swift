@@ -5,12 +5,13 @@ struct HomeView: View {
     @Environment(Store.self) private var store
     @Binding var tab: Tab
     @Binding var showSettings: Bool
+    @Binding var showAdd: Bool
     let open: (Route) -> Void
 
     var body: some View {
         Group {
             switch tab {
-            case .flights: FlightsHome(showSettings: $showSettings, open: open)
+            case .flights: FlightsHome(showSettings: $showSettings, showAdd: $showAdd, open: open)
             case .alerts: AlertsView(open: open)
             case .passport: PassportView(showSettings: $showSettings)
             }
@@ -118,6 +119,7 @@ extension Tab {
 struct FlightsHome: View {
     @Environment(Store.self) private var store
     @Binding var showSettings: Bool
+    @Binding var showAdd: Bool
     let open: (Route) -> Void
 
     var body: some View {
@@ -129,6 +131,7 @@ struct FlightsHome: View {
                 SheetTitle(title: "My Flights") {
                     HStack(spacing: 10) {
                         Circle().fill(store.offline ? Th.muted : Th.green).frame(width: 8, height: 8)
+                        RoundButton(symbol: "plus") { showAdd = true }
                         Avatar { showSettings = true }
                     }
                 }
@@ -193,6 +196,7 @@ struct FlightsHome: View {
             }
             .padding(.horizontal, 14)
             .padding(.bottom, 90)
+            .sheetScroll()
         }
         .refreshable { await store.refresh() }
     }
@@ -440,6 +444,7 @@ struct AlertsView: View {
             }
             .padding(.horizontal, 14)
             .padding(.bottom, 90)
+            .sheetScroll()
         }
         .task { await store.loadAlerts() }
         .refreshable { await store.loadAlerts() }

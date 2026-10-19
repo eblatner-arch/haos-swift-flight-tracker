@@ -63,6 +63,7 @@ struct PassportView: View {
             }
             .padding(.horizontal, 14)
             .padding(.bottom, 90)
+            .sheetScroll()
         }
         .task(id: store.passYear) { await store.loadPassport() }
         .onChange(of: store.searchRequest) { _, _ in searching = true }
