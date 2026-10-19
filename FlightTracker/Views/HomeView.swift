@@ -333,7 +333,17 @@ struct NasAlertCard: View {
                 if !sub.isEmpty { Text(sub).font(.subheadline).foregroundStyle(Th.muted) }
                 let scope = n["scope"].array.compactMap { $0.string }
                 if !scope.isEmpty {
-                    Text("Departures from " + scope.joined(separator: " ")).font(.footnote).foregroundStyle(Th.muted)
+                    // the centers (and airports) whose departures it holds; yours in red
+                    let hits = Set(g.uses.flatMap { u in u.impact.filter { !$0["airborne"].bool }.flatMap { [$0["center"].string, $0["from"].string].compactMap { $0 } } })
+                    FlowLayout(spacing: 6) {
+                        Text("Departures from").font(.system(size: 14)).foregroundStyle(Th.faint).padding(.vertical, 5)
+                        ForEach(scope, id: \.self) { c in
+                            Text(c).font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 9).padding(.vertical, 5)
+                                .background(hits.contains(c) ? Th.red : Color.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 7))
+                        }
+                    }
                 }
                 HStack(spacing: 16) {
                     if showMapLink && ["gs", "gdp"].contains(g.kind) && !n["scope"].array.isEmpty {
