@@ -5,7 +5,7 @@ import Foundation
 enum API {
     static let serverKey = "server"
 
-    /// e.g. https://ericsflights.duckdns.org:8090/ (always ends with a slash)
+    /// e.g. https://your-home.example.com:8090/ (always ends with a slash)
     static var base: URL? {
         guard var s = UserDefaults.standard.string(forKey: serverKey)?.trimmingCharacters(in: .whitespacesAndNewlines),
               !s.isEmpty else { return nil }

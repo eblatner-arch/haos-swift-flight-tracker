@@ -37,7 +37,7 @@ struct SettingsView: View {
                     if let testMsg { Text(testMsg).font(.footnote).foregroundStyle(Th.muted) }
                 }
                 Section {
-                    TextField("https://ericsflights.duckdns.org:8090", text: $server)
+                    TextField("https://your-home.example.com:8090", text: $server)
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
