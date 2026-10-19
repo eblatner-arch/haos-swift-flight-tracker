@@ -426,7 +426,6 @@ struct FlightMap: View {
                 .annotationTitles(.hidden)
         }
     }
-    }
 
     /// changes when there's something new to frame (another page, or its data arrived)
     private var frameKey: String {
