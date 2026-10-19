@@ -55,6 +55,9 @@ struct FlightMap: View {
     /// the map's size, and the part of it where routes should sit (above the sheet, clear of buttons)
     let screen: CGSize
     let area: CGRect
+    /// the sheet is all the way up: the map can't be seen, so it waits to move until it can
+    var covered = false
+    @State private var pendingFocus: Store.MapFocus?
     @State private var camera: MapCameraPosition = .automatic
     /// a framing just asked for: once the camera stops, it's checked and corrected (MapKit's own
     /// fitting of a rectangle pads it, and the globe zooms out further)
@@ -359,6 +362,9 @@ struct FlightMap: View {
         .task(id: layoutCodes) { for c in layoutCodes { await store.loadLayout(c) } }
         .onChange(of: store.focusTick) { _, _ in apply(store.mapFocus) }
         .onChange(of: area) { _, _ in apply(store.mapFocus, quick: true) }
+        .onChange(of: covered) { _, c in
+            if !c, let f = pendingFocus { pendingFocus = nil; apply(f, quick: true) }
+        }
         .onChange(of: frameKey(sc)) { _, _ in apply(.fit) }
         .onAppear { apply(.fit) }
     }
@@ -450,6 +456,7 @@ struct FlightMap: View {
     }
 
     private func apply(_ f: Store.MapFocus, quick: Bool = false) {
+        if covered { pendingFocus = f; return }
         let r: MKMapRect?
         switch f {
         case .fit:

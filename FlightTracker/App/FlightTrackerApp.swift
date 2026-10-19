@@ -55,7 +55,7 @@ struct RootView: View {
             let sheetY = (stop == .full ? ys[.mid] : ys[stop]) ?? H * 0.45
             let area = CGRect(x: 18, y: inset + 50, width: W - 18 - 74, height: max(120, sheetY - inset - 50 - 24))
             ZStack(alignment: .top) {
-                FlightMap(route: nav.path.last, tab: tab, screen: geo.size, area: area)
+                FlightMap(route: nav.path.last, tab: tab, screen: geo.size, area: area, covered: stop == .full)
                 MapButtons(route: nav.path.last, airports: { open(.airports) })
                     .padding(.top, inset + 8)
                     .frame(maxWidth: .infinity, alignment: .trailing)
@@ -112,7 +112,7 @@ struct RootView: View {
         }
         .onChange(of: nav.path) { old, new in
             store.focus(.fit)
-            if new.count > old.count || new.isEmpty != old.isEmpty { setStop(.mid) }
+            if new.count > old.count || new.isEmpty != old.isEmpty { setStop(wantStop(new.last)) }
         }
         .onChange(of: tab) { _, _ in store.focus(.fit) }
     }
@@ -129,10 +129,19 @@ struct RootView: View {
     private func open(_ r: Route, force: Bool = false) {
         guard force || !nav.suppressed else { return }
         nav.path = [r]
-        setStop(.mid)
+        setStop(wantStop(r))
+    }
+
+    /// where a page opens: lists you came to read (search, stats) open all the way, the rest halfway
+    private func wantStop(_ r: Route?) -> SheetStop {
+        switch r {
+        case .find?, .stats?: return .full
+        default: return .mid
+        }
     }
 
     private func setStop(_ s: SheetStop) {
+        guard s != stop else { return }
         withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) { stop = s }
     }
 
