@@ -16,8 +16,8 @@ struct MapScene {
         let label: String
         let coordinate: CLLocationCoordinate2D
         var color: Color = .route
-        var small = false
-        var dot = false   // a colored dot with the code beside it (FAA status)
+        var style: Style = .pill
+        enum Style { case pill, dot, text, dotPill, dotCode }
     }
     struct Plane: Identifiable {
         let id: String
@@ -56,6 +56,9 @@ struct FlightMap: View {
     let screen: CGSize
     let area: CGRect
     @State private var camera: MapCameraPosition = .automatic
+    /// Map shape (Settings): flat frames routes exactly; the globe looks like Flighty's but has to zoom out further
+    @AppStorage("mapGlobe") private var globe = false
+    @AppStorage("mapDark") private var dark = false
 
     private var scene: MapScene {
         switch route {
@@ -69,6 +72,8 @@ struct FlightMap: View {
             return airportsScene()
         case .nas(let key)?:
             return nasScene(key)
+        case .find?:
+            return passScene()
 
         case nil:
             if tab == .passport { return passScene() }
@@ -89,7 +94,7 @@ struct FlightMap: View {
             let key = [leg.dep.code, leg.arr.code].sorted().joined(separator: "-")
             if !seen.contains(key) { seen.insert(key); s.lines.append(.init(id: key, coords: pts, color: .route, width: 2, geodesic: true)) }
             for (ap, c) in [(leg.dep, pts[0]), (leg.arr, pts[1])] where !s.pins.contains(where: { $0.id == ap.code }) {
-                s.pins.append(.init(id: ap.code, label: ap.code, coordinate: c))
+                s.pins.append(.init(id: ap.code, label: ap.code, coordinate: c, style: .dot))
             }
             if let pos = leg.position { s.planes.append(.init(id: leg.id, coordinate: pos.0, heading: pos.1, size: 18)) }
             s.frame += pts
@@ -157,7 +162,7 @@ struct FlightMap: View {
             let kinds = a["items"].array.compactMap { $0["kind"].string }
             let red = kinds.contains { ["gs", "closure", "gdp"].contains($0) }
             let c = CLLocationCoordinate2D(latitude: la, longitude: lo)
-            s.pins.append(.init(id: code, label: code, coordinate: c, color: red ? Th.red : Th.amber, dot: true))
+            s.pins.append(.init(id: code, label: code, coordinate: c, color: red ? Th.red : Th.amber, style: .dotCode))
             s.frame.append(c)
         }
         if s.frame.isEmpty { s.frame = [CLLocationCoordinate2D(latitude: 48, longitude: -124), CLLocationCoordinate2D(latitude: 25, longitude: -68)] }
@@ -179,19 +184,25 @@ struct FlightMap: View {
             if inS {
                 let big = rings.max { $0.count < $1.count } ?? []
                 let la = big.map(\.latitude).reduce(0, +) / Double(max(1, big.count)), lo = big.map(\.longitude).reduce(0, +) / Double(max(1, big.count))
-                s.pins.append(.init(id: "c-" + id, label: id, coordinate: CLLocationCoordinate2D(latitude: la, longitude: lo), color: hot.opacity(0.85)))
                 s.frame.append(CLLocationCoordinate2D(latitude: la, longitude: lo))
+            }
+            // every center's name, in the program's color when it's held, gray otherwise
+            let big = rings.max { $0.count < $1.count } ?? []
+            if !big.isEmpty {
+                var la = big.map(\.latitude).reduce(0, +) / Double(big.count), lo = big.map(\.longitude).reduce(0, +) / Double(big.count)
+                if let at = ctrLabelAt[id] { la = at.0; lo = at.1 }
+                s.pins.append(.init(id: "c-" + id, label: id, coordinate: CLLocationCoordinate2D(latitude: la, longitude: lo), color: inS ? hot : Th.muted, style: .text))
             }
         }
         if let p = store.airportCoord(g.airport) {
-            s.pins.append(.init(id: g.airport, label: g.airport, coordinate: p, color: hot))
+            s.pins.append(.init(id: g.airport, label: g.airport, coordinate: p, color: hot, style: .dotPill))
             s.frame.append(p)
         }
         for u in g.uses {
             for i in u.impact {
                 guard let from = i["from"].string, let p = store.airportCoord(from) ?? Airport(j: u.leg.inbound["origin"]).coordinate else { continue }
                 let c = i["airborne"].bool ? Th.muted : i["hit"].isNull ? Th.muted : i["hit"].bool ? hot : Th.green
-                if from != g.airport { s.pins.append(.init(id: "f-" + from, label: from, coordinate: p, color: c)) }
+                if from != g.airport { s.pins.append(.init(id: "f-" + from, label: from, coordinate: p, color: c, style: .dotPill)) }
                 s.frame.append(p)
             }
         }
@@ -219,7 +230,7 @@ struct FlightMap: View {
             if !seen.contains(key) { seen.insert(key); s.lines.append(.init(id: key, coords: [p, q], color: Color(white: 0.92), width: 1.4, geodesic: true)) }
             for (code, c) in [(d, p), (r, q)] where !aps.contains(code) {
                 aps.insert(code)
-                s.pins.append(.init(id: code, label: code, coordinate: c, small: true))
+                s.pins.append(.init(id: code, label: code, coordinate: c, style: .dot))
                 s.frame.append(c)
             }
         }
@@ -246,15 +257,27 @@ struct FlightMap: View {
                 }
             }
             ForEach(sc.pins) { p in
-                Annotation(p.label, coordinate: p.coordinate, anchor: p.dot ? UnitPoint(x: 0.08, y: 0.5) : .center) {
-                    if p.dot {
+                Annotation(p.label, coordinate: p.coordinate, anchor: [.dotPill, .dotCode].contains(p.style) ? UnitPoint(x: 0.06, y: 0.5) : .center) {
+                    switch p.style {
+                    case .dot:
+                        Circle().fill(p.color).frame(width: 8, height: 8).overlay(Circle().stroke(.white, lineWidth: 1.5))
+                    case .text:
+                        Text(p.label).font(.system(size: 12, weight: .heavy)).foregroundStyle(p.color)
+                            .shadow(color: .black, radius: 1.5).shadow(color: .black.opacity(0.8), radius: 3)
+                    case .dotCode:
                         HStack(spacing: 4) {
                             Circle().fill(p.color).frame(width: 11, height: 11).overlay(Circle().stroke(.white, lineWidth: 1.5))
                             Text(p.label).font(.system(size: 11, weight: .heavy)).foregroundStyle(.white).shadow(color: .black, radius: 2)
                         }
-                    } else if p.small {
-                        Circle().fill(Color.route).stroke(.white, lineWidth: 1).frame(width: 6, height: 6)
-                    } else {
+                    case .dotPill:
+                        HStack(spacing: 5) {
+                            Circle().fill(p.color).frame(width: 13, height: 13).overlay(Circle().stroke(.white, lineWidth: 2))
+                            Text(p.label).font(.system(size: 12, weight: .bold, design: .rounded))
+                                .padding(.horizontal, 7).padding(.vertical, 3)
+                                .background(p.color, in: RoundedRectangle(cornerRadius: 7))
+                                .foregroundStyle(.white)
+                        }
+                    case .pill:
                         Text(p.label)
                             .font(.system(size: 12, weight: .bold, design: .rounded))
                             .padding(.horizontal, 6).padding(.vertical, 3)
@@ -275,7 +298,8 @@ struct FlightMap: View {
                 .annotationTitles(.hidden)
             }
         }
-        .mapStyle(.hybrid(elevation: .realistic, pointsOfInterest: .excludingAll))
+        .mapStyle(dark ? .standard(elevation: globe ? .realistic : .flat, pointsOfInterest: .excludingAll)
+                  : globe ? .hybrid(elevation: .realistic, pointsOfInterest: .excludingAll) : .hybrid(elevation: .flat, pointsOfInterest: .excludingAll))
         .mapControls {
             MapCompass()
             MapScaleView()
@@ -333,4 +357,10 @@ struct FlightMap: View {
 extension Array {
     subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil }
 }
+
+/// where a center's name reads best (over land, not its ocean part), like the web app
+let ctrLabelAt: [String: (Double, Double)] = [
+    "ZNY": (41.05, -76.45), "ZOA": (39.2, -120.6), "ZLA": (34.8, -116.8), "ZSE": (45.6, -120.4), "ZMA": (26.8, -81.0),
+    "ZJX": (31.2, -82.6), "ZBW": (43.6, -71.8), "ZHU": (30.6, -93.8), "ZDC": (37.6, -77.8),
+]
 

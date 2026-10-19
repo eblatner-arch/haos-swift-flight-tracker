@@ -2,7 +2,7 @@ import Foundation
 
 /// Any JSON value. The add-on's API grows new fields often; reading it loosely means a new or
 /// missing field never breaks the app.
-enum JSON: Decodable, Equatable {
+enum JSON: Decodable, Hashable {
     case null
     case bool(Bool)
     case number(Double)

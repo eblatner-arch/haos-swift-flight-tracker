@@ -20,10 +20,11 @@ struct FlightDetail: View {
             await store.loadDetail(id)
             var n = 0
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(5))
+                let low = UserDefaults.standard.bool(forKey: "lowData")
+                try? await Task.sleep(for: .seconds(low ? 15 : 5))
                 if Task.isCancelled { break }
                 n += 1
-                if n % 12 == 0 { await store.loadDetail(id) } else { await store.pollLive(id) }
+                if n % (low ? 4 : 12) == 0 { await store.loadDetail(id) } else { await store.pollLive(id) }
             }
         }
     }

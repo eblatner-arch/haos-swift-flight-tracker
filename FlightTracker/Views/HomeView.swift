@@ -130,7 +130,6 @@ struct FlightsHome: View {
             VStack(alignment: .leading, spacing: 10) {
                 SheetTitle(title: "My Flights") {
                     HStack(spacing: 10) {
-                        Circle().fill(store.offline ? Th.muted : Th.green).frame(width: 8, height: 8)
                         RoundButton(symbol: "plus") { showAdd = true }
                         Avatar { showSettings = true }
                     }
@@ -457,5 +456,40 @@ struct AlertsView: View {
         }
         .task { await store.loadAlerts() }
         .refreshable { await store.loadAlerts() }
+    }
+}
+
+/// Top left of the map, like the web app: Live (green when the add-on answers, gray on the phone's
+/// copy) and Drive backup (green backed up, amber changes waiting, blue uploading, red a problem).
+struct StatusPills: View {
+    @Environment(Store.self) private var store
+    let openSettings: () -> Void
+    var body: some View {
+        let b = store.stateJ["backup"]
+        let st = b["state"].string ?? "off"
+        HStack(spacing: 6) {
+            pill(color: store.offline ? Th.muted : Th.green) {
+                Circle().fill(store.offline ? Th.muted : Th.green).frame(width: 7, height: 7)
+                Text("Live").font(.system(size: 12, weight: .bold))
+            }
+            if st != "off" {
+                let c: Color = st == "synced" ? Th.green : st == "waiting" ? Th.amber : st == "syncing" ? Th.accent : Th.red
+                Button(action: openSettings) {
+                    pill(color: c) {
+                        Image(systemName: "icloud.fill").font(.system(size: 11, weight: .bold))
+                        Text(st == "syncing" ? "Syncing" : st == "error" ? "Drive !" : st == "disconnected" ? "Drive off" : "Drive").font(.system(size: 12, weight: .bold))
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func pill<C: View>(color: Color, @ViewBuilder _ c: () -> C) -> some View {
+        HStack(spacing: 5) { c() }
+            .foregroundStyle(color)
+            .padding(.horizontal, 9).padding(.vertical, 5)
+            .background(Color(hex: 0x1C1C1F, alpha: 0.88), in: Capsule())
+            .overlay(Capsule().stroke(color.opacity(0.4), lineWidth: 1))
     }
 }
