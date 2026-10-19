@@ -312,14 +312,25 @@ struct MapButtons: View {
                 }
                 .buttonStyle(.plain)
             }
-            if case .leg(let id)? = route, let leg = store.leg(id) {
-                if leg.position != nil { button("airplane") { store.focus(.plane) } }
+            if let leg = pageLeg {
+                if leg.position != nil || isFlying { button("airplane") { store.focus(.plane) } }
                 if let c = leg.dep.coordinate { button("airplane.departure") { store.focus(.area(lat: c.latitude, lon: c.longitude, km: 2.2)) } }
                 if let c = leg.arr.coordinate { button("airplane.arrival") { store.focus(.area(lat: c.latitude, lon: c.longitude, km: 2.2)) } }
             }
         }
         .padding(.trailing, 12)
     }
+
+    /// the flight this page is about: yours, an earlier leg of its airplane, or one from your Passport
+    private var pageLeg: Leg? {
+        switch route {
+        case .leg(let id)?: return store.leg(id)
+        case .aircraft(let id, let n)?: return store.rotationLeg(id, n)
+        case .hist(let id)?: return store.histDetails[id].map(HistFlightView.leg)
+        default: return nil
+        }
+    }
+    private var isFlying: Bool { ["airborne", "taxi_out"].contains(pageLeg?.phase ?? "") }
 
     /// red: a ground stop or closure catches one of your flights; amber: a delay program does
     private var towerColor: Color {
