@@ -342,8 +342,8 @@ struct FlightMap: View {
         }
         .task(id: layoutCodes) { for c in layoutCodes { await store.loadLayout(c) } }
         .onChange(of: store.focusTick) { _, _ in apply(store.mapFocus) }
-        .onChange(of: area) { _, _ in apply(store.mapFocus) }
-        .onChange(of: frameKey) { _, _ in apply(.fit) }
+        .onChange(of: area) { _, _ in apply(store.mapFocus, quick: true) }
+        .onChange(of: frameKey(sc)) { _, _ in apply(.fit) }
         .onAppear { apply(.fit) }
     }
 
@@ -420,20 +420,20 @@ struct FlightMap: View {
 
     @MapContentBuilder private var surfaceContent: some MapContent {
         let list = surfTargets
-        let close = camDist < 4_000
+        // labels always on, sized to the zoom: small from the whole airport, full size close in
+        let z = CGFloat(max(0, min(1, (log(25_000) - log(max(1_500, camDist))) / (log(25_000) - log(1_500)))))
         ForEach(list.indices, id: \.self) { i in
-            Annotation("", coordinate: list[i].0, anchor: .center) { SurfaceTargetView(t: list[i].1, close: close) }
+            Annotation("", coordinate: list[i].0, anchor: .center) { SurfaceTargetView(t: list[i].1, zoom: z) }
                 .annotationTitles(.hidden)
         }
     }
 
     /// changes when there's something new to frame (another page, or its data arrived)
-    private var frameKey: String {
-        let s = scene
+    private func frameKey(_ s: MapScene) -> String {
         return "\(String(describing: route))|\(tab.rawValue)|\(s.lines.count)|\(s.pins.count)"
     }
 
-    private func apply(_ f: Store.MapFocus) {
+    private func apply(_ f: Store.MapFocus, quick: Bool = false) {
         let r: MKMapRect?
         switch f {
         case .fit:
@@ -453,7 +453,7 @@ struct FlightMap: View {
         }
         guard let r else { return }
         want = r
-        withAnimation(.easeInOut(duration: 1.1)) { camera = .rect(r) }
+        withAnimation(.easeInOut(duration: quick ? 0.45 : 1.1)) { camera = .rect(r) }
     }
 
     /// the surface radar request for the airport nearest the middle of the screen, once zoomed in on it
@@ -558,7 +558,8 @@ struct LayoutLabelView: View {
 /// one airplane (or vehicle) on the airport surface; yours in the route color with its callsign
 struct SurfaceTargetView: View {
     let t: JSON
-    let close: Bool
+    /// 0 = the whole airport in view, 1 = close in
+    let zoom: CGFloat
     var body: some View {
         let mine = t["mine"].bool
         if !mine && (t["kind"].string == "vehicle" || (t["cs"].isNull && t["type"].isNull)) {
@@ -566,15 +567,15 @@ struct SurfaceTargetView: View {
         } else {
             ZStack(alignment: .leading) {
                 Image(systemName: "airplane")
-                    .font(.system(size: mine ? 20 : 13, weight: .bold))
+                    .font(.system(size: (mine ? 16 : 10) + 5 * zoom, weight: .bold))
                     .foregroundStyle(mine ? Color.route : Color.white.opacity(0.9))
                     .shadow(color: .black.opacity(0.7), radius: 2)
                     .rotationEffect(.degrees((t["hdg"].double ?? 0) - 90))
-                if mine || close, let cs = t["cs"].string {
-                    Text(cs).font(.system(size: mine ? 12 : 10, weight: .bold)).foregroundStyle(.white)
-                        .padding(.horizontal, 4).padding(.vertical, 1)
+                if let cs = t["cs"].string ?? t["squawk"].string {
+                    Text(cs).font(.system(size: (mine ? 10 : 8) + 3 * zoom, weight: .bold)).foregroundStyle(.white)
+                        .padding(.horizontal, 3 + zoom).padding(.vertical, 1)
                         .background(mine ? Color.route : Color.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 4))
-                        .offset(x: mine ? 18 : 12)
+                        .offset(x: (mine ? 14 : 9) + 5 * zoom)
                         .fixedSize()
                 }
             }

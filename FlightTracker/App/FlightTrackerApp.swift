@@ -189,18 +189,25 @@ struct SheetHost<Content: View>: View {
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { n in
             guard let f = n.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
             let h = max(0, UIScreen.main.bounds.height - f.minY)
-            withAnimation(.easeOut(duration: 0.25)) {
-                kb = h > 0 ? max(0, h - 60) : 0
-                if h > 0 { stop = .full; drag = 0 }      // typing: the whole page, above the keyboard
+            let dur = (n.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double) ?? 0.25
+            let to = h > 0 ? max(0, h - 60) : 0
+            guard abs(to - kb) > 1 || (h > 0 && stop != .full) else { return }
+            // typing: the whole page, above the keyboard, moving with it
+            withAnimation(.easeOut(duration: max(0.2, dur))) {
+                kb = to
+                if h > 0, stop != .full { stop = .full; drag = 0 }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-            withAnimation(.easeOut(duration: 0.25)) { kb = 0 }
+            if kb > 0 { withAnimation(.easeOut(duration: 0.25)) { kb = 0 } }
         }
         .background(Th.sheet)
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: 26, topTrailingRadius: 26, style: .continuous))
-        .compositingGroup()
-        .shadow(color: .black.opacity(0.35), radius: 10, y: -3)
+        // a soft edge above the sheet, drawn once (a live shadow re-renders the whole sheet every frame it moves)
+        .background(alignment: .top) {
+            LinearGradient(colors: [.clear, .black.opacity(0.28)], startPoint: .top, endPoint: .bottom)
+                .frame(height: 22).offset(y: -20).allowsHitTesting(false)
+        }
         .offset(y: y)
         .simultaneousGesture(dragGesture)
     }
@@ -253,8 +260,9 @@ enum SheetStop { case full, mid, peek }
 /// the top of a page moves the sheet instead.
 @Observable
 final class SheetState {
-    var contentTop: CGFloat = 0
-    var fullTop: CGFloat = 0
+    // read only by the drag (never drawn), so scrolling doesn't redraw anything
+    @ObservationIgnored var contentTop: CGFloat = 0
+    @ObservationIgnored var fullTop: CGFloat = 0
     var atTop: Bool { contentTop >= fullTop - 6 }
 }
 

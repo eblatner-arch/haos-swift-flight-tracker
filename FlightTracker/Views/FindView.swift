@@ -36,7 +36,7 @@ struct FindView: View {
     var body: some View {
         let res = results
         ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
+            LazyVStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Text("Find").font(.system(size: 32, weight: .bold)).tracking(-0.5)
                     Spacer()
@@ -67,7 +67,7 @@ struct FindView: View {
                 summary(res)
                 ForEach(groups(res), id: \.0) { g in
                     if !g.0.isEmpty { Text(g.0).font(.system(size: 19, weight: .bold)).padding(.top, 8) }
-                    VStack(spacing: 0) {
+                    LazyVStack(spacing: 0) {
                         ForEach(Array(g.1.enumerated()), id: \.offset) { _, f in
                             Button { if Nav.blocked { return }; if let id = f["id"].string { nav.push(.hist(id)) } } label: { FindRow(f: f) }.buttonStyle(.plain)
                         }
@@ -82,8 +82,12 @@ struct FindView: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .task {
+            // the saved copy right away, the fresh one when it comes
+            if all.isEmpty, let d = Disk.load("api/history"), let j = try? JSON.parse(d) { all = j["flights"].array }
+            if preset.isEmpty {
+                Task { try? await Task.sleep(for: .milliseconds(380)); typing = true }   // after the sheet has opened
+            } else { applyPreset() }
             if let r = try? await API.get("api/history") { all = r.0["flights"].array }
-            if preset.isEmpty { typing = true } else { applyPreset() }
         }
     }
 
@@ -171,7 +175,19 @@ struct FindView: View {
         return t["out"]["s"].double ?? t["out"]["a"].double ?? t["off"]["s"].double ?? t["off"]["a"].double ?? 0
     }
 
-    private static func local(_ f: JSON) -> (hour: Int, dow: Int, month: String) {
+    /// worked out once per flight (a calendar per flight per keystroke was the slow part)
+    @MainActor private static var localCache: [String: (hour: Int, dow: Int, month: String)] = [:]
+    @MainActor private static var hayCache: [String: String] = [:]
+
+    @MainActor private static func local(_ f: JSON) -> (hour: Int, dow: Int, month: String) {
+        let key = f["id"].string ?? ""
+        if let c = localCache[key] { return c }
+        let v = localCalc(f)
+        if !key.isEmpty { localCache[key] = v }
+        return v
+    }
+
+    private static func localCalc(_ f: JSON) -> (hour: Int, dow: Int, month: String) {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = f["dep_tz"].string.flatMap(TimeZone.init(identifier:)) ?? .current
         let d = Date(timeIntervalSince1970: depTime(f))
@@ -180,7 +196,15 @@ struct FindView: View {
         return (c.hour ?? 0, (c.weekday ?? 1) - 1, full[max(0, (c.month ?? 1) - 1)])
     }
 
-    private static func hay(_ f: JSON) -> String {
+    @MainActor private static func hay(_ f: JSON) -> String {
+        let key = f["id"].string ?? ""
+        if let h = hayCache[key] { return h }
+        let v = hayCalc(f)
+        if !key.isEmpty { hayCache[key] = v }
+        return v
+    }
+
+    @MainActor private static func hayCalc(_ f: JSON) -> String {
         let l = local(f)
         let parts: [String?] = [f["ident"].string, f["display"].string, f["display"].string?.replacingOccurrences(of: " ", with: ""), f["flight_no"].string,
                                 f["dep"].string, f["arr"].string, f["diverted_to"].string,

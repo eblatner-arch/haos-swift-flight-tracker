@@ -147,7 +147,7 @@ struct FlightsHome: View {
                     }
                     .card()
                 } else {
-                    VStack(spacing: 0) {
+                    LazyVStack(spacing: 0) {
                         ForEach(Array(live.enumerated()), id: \.element.id) { i, leg in
                             if i > 0, let lay = layover(live[i - 1], leg) { lay }
                             Button { if Nav.blocked { return }; open(.leg(leg.id)) } label: { FlightRowView(leg: leg) }.buttonStyle(.plain)

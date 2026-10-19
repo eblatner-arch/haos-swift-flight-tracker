@@ -18,7 +18,7 @@ struct PassportView: View {
                 .compactMap { $0?.uppercased() }.contains { $0.contains(q) || $0.replacingOccurrences(of: " ", with: "").contains(q.replacingOccurrences(of: " ", with: "")) }
         }
         ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
+            LazyVStack(alignment: .leading, spacing: 12) {
                 SheetTitle(title: "Passport") { Avatar { showSettings = true } }
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
@@ -46,7 +46,7 @@ struct PassportView: View {
                 }
                 if !flights.isEmpty {
                     SectionHead(title: "Flights", trailing: "\(flights.count)")
-                    VStack(spacing: 0) {
+                    LazyVStack(spacing: 0) {
                         ForEach(Array(groups(flights).enumerated()), id: \.offset) { _, g in
                             HStack {
                                 Text(g.0).font(.system(size: 17, weight: .bold))
