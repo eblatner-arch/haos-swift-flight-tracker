@@ -478,9 +478,12 @@ struct StatusPills: View {
         let b = store.stateJ["backup"]
         let st = b["state"].string ?? "off"
         HStack(spacing: 6) {
-            pill(color: store.offline ? Th.muted : Th.green) {
-                Circle().fill(store.offline ? Th.muted : Th.green).frame(width: 7, height: 7)
-                Text("Live").font(.system(size: 12, weight: .bold))
+            // Live once the add-on has answered; Offline showing the saved copy; Connecting until then
+            let live = store.connected && !store.offline
+            let c: Color = live ? Th.green : store.offline ? Th.muted : Th.amber
+            pill(color: c) {
+                Circle().fill(c).frame(width: 7, height: 7)
+                Text(live ? "Live" : store.offline ? "Offline" : "Connecting").font(.system(size: 12, weight: .bold))
             }
             if st != "off" {
                 let c: Color = st == "synced" ? Th.green : st == "waiting" ? Th.amber : st == "syncing" ? Th.accent : Th.red

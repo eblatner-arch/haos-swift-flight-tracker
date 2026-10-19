@@ -54,6 +54,7 @@ final class Store {
 
     func loadPassport() async {
         let path = "api/history" + (passYear.map { "?year=\($0)" } ?? "")
+        if passport.isNull || passport["year"].string != passYear, let j = fromDisk(path) { passport = j }
         if let r = try? await API.get(path) { passport = r.0 }
     }
 
@@ -168,8 +169,21 @@ final class Store {
         details[id] ?? legs.first { $0.id == id }
     }
 
+    /// a good answer from the add-on since the app opened
+    var connected = false
+
+    /// the phone's saved copy, shown at once (offline, or while the add-on answers)
+    private func fromDisk(_ path: String) -> JSON? {
+        guard let d = Disk.load(path) else { return nil }
+        return try? JSON.parse(d)
+    }
+
     func refresh() async {
         guard API.base != nil else { error = API.Failure.noServer.errorDescription; return }
+        if legs.isEmpty, let j = fromDisk("api/state") {
+            legs = j["legs"].array.map { Leg(j: $0) }
+            stateJ = j
+        }
         loading = true
         defer { loading = false }
         do {
@@ -178,9 +192,9 @@ final class Store {
             stateJ = j
             offline = fromPhone
             error = nil
-            if !fromPhone { updated = Date() }
+            if !fromPhone { updated = Date(); connected = true }
         } catch {
-            if (error as? CancellationError) == nil { self.error = error.localizedDescription }
+            if (error as? CancellationError) == nil { self.error = error.localizedDescription; offline = true }
         }
         if liveries.isNull, let r = try? await API.get("api/liveries") { liveries = r.0 }
     }
