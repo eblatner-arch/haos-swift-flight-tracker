@@ -68,8 +68,7 @@ enum Disk {
     }()
 
     static func file(_ path: String) -> URL {
-        let name = path.split(separator: "?").first.map(String.init) ?? path
-        let safe = name.map { $0.isLetter || $0.isNumber || $0 == "-" ? $0 : "_" }
+        let safe = path.map { $0.isLetter || $0.isNumber || $0 == "-" ? $0 : "_" }
         return dir.appendingPathComponent(String(safe) + ".json")
     }
 

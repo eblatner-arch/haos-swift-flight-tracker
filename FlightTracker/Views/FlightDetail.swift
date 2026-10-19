@@ -12,13 +12,15 @@ struct FlightDetail: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
                         Header(leg: leg)
+                        Banner(status: StatusLine(leg))
                         MapButtons(leg: leg)
                         if !leg.problems.isEmpty { Problems(texts: leg.problems) }
                         Endpoint(leg: leg, departure: true)
                         Endpoint(leg: leg, departure: false)
+                        if !leg.inbound.isNull { InboundCard(leg: leg) }
+                        GoodToKnow(leg: leg)
                         TimesCard(leg: leg)
                         AircraftCard(leg: leg)
-                        if !leg.inbound.isNull { InboundCard(leg: leg) }
                         if let u = store.updated {
                             Text("Updated \(Fmt.relative(u)) · \(leg.j["source"].string ?? "")")
                                 .font(.caption2).foregroundStyle(.secondary)
@@ -64,6 +66,84 @@ private struct Header: View {
 }
 
 /// Zoom the map: the whole flight, the airplane, either airport.
+/// The colored line under the header: what's happening now.
+struct Banner: View {
+    let status: StatusLine
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(status.head).font(.title3.weight(.bold)).foregroundStyle(status.tone ?? .primary)
+            if !status.sub.isEmpty { Text(status.sub).font(.subheadline).foregroundStyle(status.tone?.opacity(0.85) ?? .secondary) }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background((status.tone ?? .gray).opacity(0.14), in: RoundedRectangle(cornerRadius: 14))
+    }
+}
+
+/// Weather at both ends, FAA programs and delays, a time zone change, your record on the route.
+private struct GoodToKnow: View {
+    let leg: Leg
+    var body: some View {
+        let cards = items
+        if !cards.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Good to Know").font(.headline)
+                ForEach(cards, id: \.title) { c in
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: c.icon).symbolRenderingMode(.multicolor).font(.title3).frame(width: 30)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(c.title).font(.subheadline.weight(.semibold))
+                            if !c.text.isEmpty { Text(c.text).font(.subheadline).foregroundStyle(c.tone ?? .secondary) }
+                        }
+                        Spacer()
+                        if let b = c.badge { Text(b).font(.caption.weight(.bold)).padding(.horizontal, 6).padding(.vertical, 2).background(.gray.opacity(0.3), in: Capsule()) }
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.card, in: RoundedRectangle(cornerRadius: 14))
+                }
+            }
+        }
+    }
+
+    private struct Item { let icon: String; let title: String; let text: String; var tone: Color? = nil; var badge: String? = nil }
+
+    private var items: [Item] {
+        var out: [Item] = []
+        for ap in [leg.dep, leg.arr] {
+            if let w = WeatherSummary(leg.weather(ap)) {
+                out.append(Item(icon: w.symbol, title: "Current \(ap.code) Weather", text: w.text, badge: w.category))
+            }
+        }
+        var byAirport: [String: [JSON]] = [:]
+        for n in leg.nas { byAirport[n["airport"].string ?? "?", default: []].append(n) }
+        for code in [leg.dep.code, leg.arr.code] {
+            for n in byAirport[code] ?? [] {
+                let major = ["gs", "gdp", "closure"].contains(n["kind"].string ?? "")
+                let sub = [n["detail"].string, n["reason"].string].compactMap { $0 }.joined(separator: " · ")
+                out.append(Item(icon: major ? "exclamationmark.octagon.fill" : "clock.badge.exclamationmark", title: "\(code): \(n["label"].string ?? "FAA")", text: sub, tone: major ? .red : .orange))
+            }
+        }
+        if byAirport.isEmpty && leg.j["watching"].bool {
+            out.append(Item(icon: "checkmark.seal.fill", title: "No FAA delays", text: "No ground stops, delay programs or closures at \(leg.dep.code) or \(leg.arr.code)."))
+        }
+        if let t = leg.inn.best {
+            let a = leg.arr.timeZone.secondsFromGMT(for: t), d = leg.dep.timeZone.secondsFromGMT(for: t)
+            if a != d {
+                let h = (a - d) / 3600
+                out.append(Item(icon: "clock.arrow.2.circlepath", title: "\(h > 0 ? "+" : "−")\(abs(h)) hour\(abs(h) == 1 ? "" : "s") time zone change",
+                                text: "\(Fmt.time(t, leg.arr.timeZone)) arrival is \(Fmt.time(t, leg.dep.timeZone)) \(leg.dep.city) time"))
+            }
+        }
+        let rs = leg.routeStats
+        if let n = rs["flights"].int, n > 0 {
+            let pct = rs["on_time_pct"].int.map { "\($0)% on time" } ?? "No delay record yet"
+            out.append(Item(icon: "arrow.triangle.swap", title: "You've flown \(leg.dep.code)–\(leg.arr.code) \(n) time\(n == 1 ? "" : "s")", text: pct))
+        }
+        return out
+    }
+}
+
 private struct MapButtons: View {
     @Environment(Store.self) private var store
     let leg: Leg
@@ -137,6 +217,10 @@ private struct Endpoint: View {
                         if let term { Text("Terminal \(term)").font(.caption2).foregroundStyle(.secondary) }
                     }
                 }
+            }
+            if departure, let e = leg.edct {
+                Text("EDCT \(Fmt.time(e.at, ap.timeZone))" + (e.program.map { " · \($0)" } ?? ""))
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(.orange)
             }
             HStack {
                 Text(Fmt.late(late)).foregroundStyle(Fmt.lateColor(late))

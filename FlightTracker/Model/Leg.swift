@@ -1,5 +1,6 @@
 import Foundation
 import CoreLocation
+import SwiftUI
 
 /// An airport as the add-on sends it.
 struct Airport: Equatable {
@@ -145,6 +146,79 @@ struct Leg: Identifiable, Equatable {
 
     var inbound: JSON { j["inbound"] }
     var turnMinutes: Int? { j["turn"].int }
+
+    /// The FAA's expected departure clearance time (a delay program), until the airplane takes off.
+    var edct: (at: Date, program: String?)? {
+        guard off.actual == nil, let at = flight["swim"]["edct"]["at"].date else { return nil }
+        return (at, flight["swim"]["edct"]["for"].string)
+    }
+    /// FAA programs, closures and delay trends at this flight's airports.
+    var nas: [JSON] { j["nas"].array }
+    /// Current weather (METAR) at an airport of this flight.
+    func weather(_ ap: Airport) -> JSON {
+        for (k, v) in j["wx"].object where k == ap.code || k == (ap.j["icao"].string ?? "") || k.hasSuffix(ap.code) { return v }
+        return .null
+    }
+    var routeStats: JSON { j["route_stats"] }
+    var notFound: Bool { status.lowercased().contains("not found") }
+}
+
+/// What's happening now, in Flighty's words, and how it's going (for the colored banner).
+struct StatusLine {
+    let head: String
+    let sub: String
+    let tone: Color?
+
+    init(head: String, sub: String, tone: Color?) {
+        self.head = head
+        self.sub = sub
+        self.tone = tone
+    }
+
+    init(_ leg: Leg) {
+        let now = Date()
+        let am = leg.inn.lateMinutes, dm = leg.out.lateMinutes
+        func lateLower(_ m: Int?) -> String {
+            guard let m else { return "on time" }
+            if abs(m) < 5 { return "on time" }
+            return m > 0 ? "\(Fmt.span(Double(m * 60))) late" : "\(Fmt.span(Double(-m * 60))) early"
+        }
+        let tone: (Int?) -> Color? = { m in
+            guard let m else { return nil }
+            return m >= 15 ? .red : m >= 5 ? .orange : .green
+        }
+        switch leg.phase {
+        case "airborne":
+            let at = leg.on.best ?? leg.inn.best
+            head = at.map { $0 > now ? "Landing in \(Fmt.span($0.timeIntervalSince(now)))" : "Landing now" } ?? "In the air"
+            sub = "Arrives at the gate \(lateLower(am))."
+            self.tone = tone(am)
+        case "taxi_out":
+            head = "Taxiing to the runway"
+            let pushed = leg.out.actual.map { "Pushed back \(Fmt.span(now.timeIntervalSince($0))) ago. " } ?? ""
+            sub = "\(pushed)Arrives \(lateLower(am))."
+            self.tone = tone(am)
+        case "landed":
+            if let i = leg.inn.best, i > now { head = "At the gate in \(Fmt.span(i.timeIntervalSince(now)))" } else { head = "Landed" }
+            sub = "Taxiing to the gate · arrives \(lateLower(am))."
+            self.tone = tone(am)
+        case "arrived":
+            head = "Arrived \(lateLower(am))"
+            sub = leg.inn.actual.map { "At the gate \(Fmt.span(now.timeIntervalSince($0))) ago." } ?? ""
+            self.tone = tone(am)
+        case "cancelled":
+            head = "Cancelled"; sub = ""; self.tone = .red
+        case "diverted":
+            head = "Diverted to \(leg.arr.code)"; sub = ""; self.tone = .red
+        default:
+            if let o = leg.out.best, o > now { head = "Departs in \(Fmt.span(o.timeIntervalSince(now)))" } else { head = "Departing" }
+            let known = leg.out.estimated != nil || leg.out.actual != nil
+            if !known { sub = "Scheduled." }
+            else if let d = dm, d >= 5 { sub = "Departs \(Fmt.span(Double(d * 60))) late" + ((am ?? 0) >= 5 ? ", arrives \(lateLower(am))." : ".") }
+            else { sub = "On time" + ((am ?? 0) >= 5 ? ", arrives \(lateLower(am))." : ".") }
+            self.tone = known ? tone(max(dm ?? 0, am ?? 0)) : nil
+        }
+    }
 }
 
 /// Degrees from a to b, 0 = north.

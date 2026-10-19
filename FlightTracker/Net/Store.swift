@@ -36,6 +36,25 @@ final class Store {
         legs.filter { $0.finished }.sorted { ($0.out.best ?? .distantPast) > ($1.out.best ?? .distantPast) }
     }
 
+    // ---------- Alerts and Passport ----------
+    var alerts: [JSON] = []
+    var passport: JSON = .null
+    var passYear: String? = nil
+    var histDetails: [String: JSON] = [:]
+
+    func loadAlerts() async {
+        if let r = try? await API.get("api/alerts") { alerts = r.0["alerts"].array }
+    }
+
+    func loadPassport() async {
+        let path = "api/history" + (passYear.map { "?year=\($0)" } ?? "")
+        if let r = try? await API.get(path) { passport = r.0 }
+    }
+
+    func loadHist(_ id: String) async {
+        if let r = try? await API.get("api/history/\(id)") { histDetails[id] = r.0 }
+    }
+
     func leg(_ id: String) -> Leg? {
         details[id] ?? legs.first { $0.id == id }
     }
