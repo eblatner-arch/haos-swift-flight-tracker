@@ -297,39 +297,7 @@ struct FlightMap: View {
                         .stroke(l.color, style: StrokeStyle(lineWidth: l.width, lineCap: .round, lineJoin: .round))
                 }
             }
-            // airport diagrams, once you're close enough to see them
-            if camDist < 40_000 {
-                let ppm = pointsPerMeter
-                ForEach(layoutCodes, id: \.self) { code in
-                    if let L = store.layouts[code] {
-                        ForEach(Array(L.terminals.enumerated()), id: \.offset) { _, r in
-                            MapPolygon(coordinates: r).foregroundStyle(Color(hex: 0xC8CDD8).opacity(0.16)).stroke(Color(hex: 0xC8CDD8).opacity(0.5), lineWidth: 1)
-                        }
-                        ForEach(Array(L.taxiways.enumerated()), id: \.offset) { _, l in
-                            MapPolyline(coordinates: l).stroke(.white.opacity(0.14), style: StrokeStyle(lineWidth: max(1.5, 23 * ppm), lineCap: .round, lineJoin: .round))
-                        }
-                        if camDist < 6_000 {
-                            ForEach(Array(L.taxiways.enumerated()), id: \.offset) { _, l in
-                                MapPolyline(coordinates: l).stroke(Color(hex: 0xF6C445).opacity(0.5), lineWidth: 1)
-                            }
-                        }
-                        ForEach(Array(L.runways.enumerated()), id: \.offset) { _, l in
-                            MapPolyline(coordinates: l).stroke(.white.opacity(0.24), style: StrokeStyle(lineWidth: max(3, 45 * ppm), lineCap: .butt))
-                            MapPolyline(coordinates: l).stroke(.white.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [8, 8]))
-                        }
-                        ForEach(layoutLabels(L)) { lb in
-                            Annotation("", coordinate: lb.at, anchor: .center) {
-                                Text(lb.text)
-                                    .font(.system(size: lb.kind == .runway ? 13 : lb.kind == .terminal ? 12 : 11, weight: lb.kind == .gate ? .semibold : .heavy))
-                                    .foregroundStyle(lb.kind == .taxiway ? Color(hex: 0xF6C445) : lb.kind == .gate ? Color(hex: 0x9FC2FF) : .white)
-                                    .padding(.horizontal, lb.kind == .runway ? 5 : 0).padding(.vertical, lb.kind == .runway ? 1 : 0)
-                                    .background(lb.kind == .runway ? Color.black.opacity(0.55) : .clear, in: RoundedRectangle(cornerRadius: 4))
-                                    .shadow(color: .black, radius: 1.5)
-                            }
-                        }
-                    }
-                }
-            }
+            layoutContent
             ForEach(sc.pins) { p in
                 Annotation(p.label, coordinate: p.coordinate, anchor: [.dotPill, .dotCode].contains(p.style) ? UnitPoint(x: 0.06, y: 0.5) : .center) {
                     switch p.style {
@@ -361,35 +329,7 @@ struct FlightMap: View {
                 }
                 .annotationTitles(.hidden)
             }
-            // everything moving on the ground there: airplanes with transponders, yours highlighted
-            if camDist < 25_000 {
-                ForEach(Array(surf.enumerated()), id: \.offset) { _, t in
-                    if let la = t["lat"].double, let lo = t["lon"].double {
-                        let mine = t["mine"].bool
-                        Annotation("", coordinate: CLLocationCoordinate2D(latitude: la, longitude: lo), anchor: .center) {
-                            if !mine && (t["kind"].string == "vehicle" || (t["cs"].isNull && t["type"].isNull)) {
-                                Circle().fill(Color(white: 0.56)).frame(width: 5, height: 5)
-                            } else {
-                                ZStack(alignment: .leading) {
-                                    Image(systemName: "airplane")
-                                        .font(.system(size: mine ? 20 : 13, weight: .bold))
-                                        .foregroundStyle(mine ? Color.route : .white.opacity(0.9))
-                                        .shadow(color: .black.opacity(0.7), radius: 2)
-                                        .rotationEffect(.degrees((t["hdg"].double ?? 0) - 90))
-                                    if mine || camDist < 4_000, let cs = t["cs"].string {
-                                        Text(cs).font(.system(size: mine ? 12 : 10, weight: .bold)).foregroundStyle(.white)
-                                            .padding(.horizontal, 4).padding(.vertical, 1)
-                                            .background(mine ? Color.route : Color.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 4))
-                                            .offset(x: mine ? 18 : 12)
-                                            .fixedSize()
-                                    }
-                                }
-                            }
-                        }
-                        .annotationTitles(.hidden)
-                    }
-                }
-            }
+            surfaceContent
             ForEach(sc.planes) { pl in
                 Annotation("", coordinate: pl.coordinate, anchor: .center) {
                     Image(systemName: "airplane")
@@ -437,6 +377,73 @@ struct FlightMap: View {
         .onAppear { apply(.fit) }
     }
 
+    @MapContentBuilder private var layoutContent: some MapContent {
+    // airport diagrams, once you're close enough to see them
+    if camDist < 40_000 {
+        ForEach(layoutCodes, id: \.self) { code in
+            if let L = store.layouts[code] {
+                ForEach(Array(L.terminals.enumerated()), id: \.offset) { _, r in
+                    MapPolygon(coordinates: r).foregroundStyle(Color(hex: 0xC8CDD8).opacity(0.16)).stroke(Color(hex: 0xC8CDD8).opacity(0.5), lineWidth: 1)
+                }
+                ForEach(Array(L.taxiways.enumerated()), id: \.offset) { _, l in
+                    MapPolyline(coordinates: l).stroke(.white.opacity(0.14), style: StrokeStyle(lineWidth: max(1.5, 23 * pointsPerMeter), lineCap: .round, lineJoin: .round))
+                }
+                if camDist < 6_000 {
+                    ForEach(Array(L.taxiways.enumerated()), id: \.offset) { _, l in
+                        MapPolyline(coordinates: l).stroke(Color(hex: 0xF6C445).opacity(0.5), lineWidth: 1)
+                    }
+                }
+                ForEach(Array(L.runways.enumerated()), id: \.offset) { _, l in
+                    MapPolyline(coordinates: l).stroke(.white.opacity(0.24), style: StrokeStyle(lineWidth: max(3, 45 * pointsPerMeter), lineCap: .butt))
+                    MapPolyline(coordinates: l).stroke(.white.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [8, 8]))
+                }
+                ForEach(layoutLabels(L)) { lb in
+                    Annotation("", coordinate: lb.at, anchor: .center) {
+                        Text(lb.text)
+                            .font(.system(size: lb.kind == .runway ? 13 : lb.kind == .terminal ? 12 : 11, weight: lb.kind == .gate ? .semibold : .heavy))
+                            .foregroundStyle(lb.kind == .taxiway ? Color(hex: 0xF6C445) : lb.kind == .gate ? Color(hex: 0x9FC2FF) : .white)
+                            .padding(.horizontal, lb.kind == .runway ? 5 : 0).padding(.vertical, lb.kind == .runway ? 1 : 0)
+                            .background(lb.kind == .runway ? Color.black.opacity(0.55) : .clear, in: RoundedRectangle(cornerRadius: 4))
+                            .shadow(color: .black, radius: 1.5)
+                    }
+                }
+            }
+        }
+    }
+    }
+
+    @MapContentBuilder private var surfaceContent: some MapContent {
+    // everything moving on the ground there: airplanes with transponders, yours highlighted
+    if camDist < 25_000 {
+        ForEach(Array(surf.enumerated()), id: \.offset) { _, t in
+            if let la = t["lat"].double, let lo = t["lon"].double {
+                let mine = t["mine"].bool
+                Annotation("", coordinate: CLLocationCoordinate2D(latitude: la, longitude: lo), anchor: .center) {
+                    if !mine && (t["kind"].string == "vehicle" || (t["cs"].isNull && t["type"].isNull)) {
+                        Circle().fill(Color(white: 0.56)).frame(width: 5, height: 5)
+                    } else {
+                        ZStack(alignment: .leading) {
+                            Image(systemName: "airplane")
+                                .font(.system(size: mine ? 20 : 13, weight: .bold))
+                                .foregroundStyle(mine ? Color.route : .white.opacity(0.9))
+                                .shadow(color: .black.opacity(0.7), radius: 2)
+                                .rotationEffect(.degrees((t["hdg"].double ?? 0) - 90))
+                            if mine || camDist < 4_000, let cs = t["cs"].string {
+                                Text(cs).font(.system(size: mine ? 12 : 10, weight: .bold)).foregroundStyle(.white)
+                                    .padding(.horizontal, 4).padding(.vertical, 1)
+                                    .background(mine ? Color.route : Color.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 4))
+                                    .offset(x: mine ? 18 : 12)
+                                    .fixedSize()
+                            }
+                        }
+                    }
+                }
+                .annotationTitles(.hidden)
+            }
+        }
+    }
+    }
+
     /// changes when there's something new to frame (another page, or its data arrived)
     private var frameKey: String {
         let s = scene
@@ -444,81 +451,26 @@ struct FlightMap: View {
     }
 
     private func apply(_ f: Store.MapFocus) {
-        let target: MapCameraPosition?
+        let r: MKMapRect?
         switch f {
         case .fit:
             let pts = scene.frame
-            target = pts.isEmpty ? nil : .rect(fitRect(pts, fill: 0.92))
+            r = pts.isEmpty ? nil : fitRect(pts, fill: 0.92)
         case .area(let la, let lo, let km):
             let d = km / 111.0
-            target = .rect(fitRect([CLLocationCoordinate2D(latitude: la - d, longitude: lo - d), CLLocationCoordinate2D(latitude: la + d, longitude: lo + d)], fill: 1))
+            r = fitRect([CLLocationCoordinate2D(latitude: la - d, longitude: lo - d), CLLocationCoordinate2D(latitude: la + d, longitude: lo + d)], fill: 1)
         case .plane:
             if let p = scene.planes.last {
                 let d = 0.6, c = p.coordinate
-                target = .rect(fitRect([CLLocationCoordinate2D(latitude: c.latitude - d, longitude: c.longitude - d),
-                                        CLLocationCoordinate2D(latitude: c.latitude + d, longitude: c.longitude + d)], fill: 1))
+                r = fitRect([CLLocationCoordinate2D(latitude: c.latitude - d, longitude: c.longitude - d),
+                             CLLocationCoordinate2D(latitude: c.latitude + d, longitude: c.longitude + d)], fill: 1)
             } else {
-                target = nil
+                r = nil
             }
         }
-        guard let target else { return }
-        if case .rect(let r) = target { want = r }
-        withAnimation(.easeInOut(duration: 1.1)) { camera = target }
-    }
-
-    /// the surface radar request for the airport nearest the middle of the screen, once zoomed in on it
-    private var surfQuery: String? {
-        guard camDist < 25_000, !seen.isNull else { return nil }
-        var lid = "", ident: String?, aps: [Airport] = []
-        switch route {
-        case .leg(let id)?:
-            guard let l = store.leg(id) else { return nil }
-            lid = id
-            aps = [l.dep, l.arr, Airport(j: l.inbound["origin"])]
-        case .aircraft(let id, let n)?:
-            guard let l = store.rotationLeg(id, n) else { return nil }
-            lid = id
-            ident = store.rotations[id]?[safe: n]?["ident"].string
-            aps = [l.dep, l.arr]
-        default: return nil
-        }
-        let mid = MKMapPoint(x: seen.midX, y: seen.midY)
-        let best = aps.compactMap { a in a.coordinate.map { (a.code, MKMapPoint($0).distance(to: mid)) } }.min { $0.1 < $1.1 }
-        guard let best, best.1 < 20_000 else { return nil }
-        return "api/surface/\(lid)?ap=\(best.0)" + (ident.map { "&ident=\($0.replacingOccurrences(of: " ", with: ""))" } ?? "")
-    }
-
-    /// the airports whose diagrams this page can show
-    private var layoutCodes: [String] {
-        switch route {
-        case .leg(let id)?: if let l = store.leg(id) { return [l.dep.code, l.arr.code, Airport(j: l.inbound["origin"]).code].filter { $0 != "?" } }
-        case .aircraft(let id, let n)?: if let l = store.rotationLeg(id, n) { return [l.dep.code, l.arr.code] }
-        case .hist(let id)?:
-            if let f = store.histDetails[id] { return [f["dep"].string, f["diverted_to"].string ?? f["arr"].string].compactMap { $0 } }
-        case .nas(let k)?: if let g = store.nasGroup(k) { return [g.airport] }
-        default: break
-        }
-        return []
-    }
-
-    /// screen points per meter on the ground, for drawing runways at their real width
-    private var pointsPerMeter: CGFloat {
-        guard !seen.isNull, seen.size.height > 0 else { return 0 }
-        let lat = MKMapPoint(x: seen.midX, y: seen.midY).coordinate.latitude
-        return screen.height / CGFloat(seen.size.height * MKMetersPerMapPointAtLatitude(lat))
-    }
-
-    /// the names worth writing at this height: runways and terminals first, then taxiways, then gates
-    private func layoutLabels(_ L: AirportLayout) -> [AirportLayout.Label] {
-        let box = seen.isNull ? MKMapRect.world : seen.insetBy(dx: -seen.size.width * 0.1, dy: -seen.size.height * 0.1)
-        let ok = L.labels.filter { lb in
-            switch lb.kind {
-            case .runway, .terminal: return camDist < 40_000
-            case .taxiway: return camDist < 9_000
-            case .gate: return camDist < 3_500
-            }
-        }.filter { box.contains(MKMapPoint($0.at)) }
-        return Array(ok.prefix(160))
+        guard let r else { return }
+        want = r
+        withAnimation(.easeInOut(duration: 1.1)) { camera = .rect(r) }
     }
 
     /// The whole map's rectangle (same shape as the screen) that puts the points in the open area
