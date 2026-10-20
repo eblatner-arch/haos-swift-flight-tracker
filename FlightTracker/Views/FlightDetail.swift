@@ -730,7 +730,8 @@ private struct DetailsKV: View {
             iso("etm").map { "EDCT \(Fmt.time($0, leg.dep.timeZone))" },
             t["mfx"].string.map { "meter fix \($0)" },
             (t["trw"].string ?? t["rwy"].string).map { "runway \($0)" },
-            iso("sta").map { "scheduled landing \(Fmt.time($0, leg.arr.timeZone))" },
+            (iso("sta_rwy") ?? iso("sta")).map { "scheduled landing \(Fmt.time($0, leg.arr.timeZone))" },
+            iso("sta_mfx").map { "meter fix at \(Fmt.time($0, leg.arr.timeZone))" } ?? iso("eta_mfx").map { "meter fix ~\(Fmt.time($0, leg.arr.timeZone))" },
         ]
         let s = parts.compactMap { $0 }.joined(separator: " · ")
         return s.isEmpty ? nil : s
