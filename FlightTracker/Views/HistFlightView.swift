@@ -32,6 +32,8 @@ struct HistFlightView: View {
                         TimesCard(leg: P)
                         AircraftCard(leg: P)
                         details(f)
+                        let log = f["history"].array.enumerated().map { LogEntry($0.offset, $0.element) }
+                        if !log.isEmpty { LookupLog(entries: log) }
                         Button { if Nav.blocked { return }; confirmDelete = true } label: {
                             Text(failed ? "Couldn't delete it. Try again" : "Delete from History").font(.system(size: 16, weight: .semibold)).foregroundStyle(Th.red)
                                 .padding(.horizontal, 15).padding(.vertical, 10)
