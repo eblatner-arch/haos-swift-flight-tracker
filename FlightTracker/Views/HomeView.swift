@@ -399,8 +399,10 @@ struct NasTrendCard: View {
         }
         .padding(.horizontal, 14).padding(.vertical, 9)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Th.card, in: RoundedRectangle(cornerRadius: Th.radius, style: .continuous))
-        .overlay(alignment: .leading) { UnevenRoundedRectangle(topLeadingRadius: Th.radius, bottomLeadingRadius: Th.radius).fill(Th.amber).frame(width: 4) }
+        .background(Th.card)
+        // the amber edge inside the card, trimmed to its rounded corners
+        .overlay(alignment: .leading) { Th.amber.frame(width: 4) }
+        .clipShape(RoundedRectangle(cornerRadius: Th.radius, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: Th.radius, style: .continuous).stroke(Th.line, lineWidth: 1))
     }
 }
