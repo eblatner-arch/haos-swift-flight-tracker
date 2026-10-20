@@ -452,6 +452,16 @@ struct FlightMap: View {
         }
     }
 
+    private var surfHasMine: Bool { camDist < 25_000 && surf.contains { $0["mine"].bool && $0["lat"].double != nil } }
+
+    /// surface targets with a position
+    private var surfTargets: [(CLLocationCoordinate2D, JSON)] {
+        camDist < 25_000 ? surf.compactMap { t in
+            guard let la = t["lat"].double, let lo = t["lon"].double else { return nil }
+            return (CLLocationCoordinate2D(latitude: la, longitude: lo), t)
+        } : []
+    }
+
     @MapContentBuilder private var surfaceContent: some MapContent {
         let list = surfTargets
         // labels always on, sized to the zoom: small from the whole airport, full size close in
