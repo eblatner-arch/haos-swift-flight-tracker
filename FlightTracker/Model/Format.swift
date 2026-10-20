@@ -66,9 +66,7 @@ enum Fmt {
 
     static func lateColor(_ minutes: Int?) -> Color {
         guard let m = minutes else { return .secondary }
-        if m >= 15 { return .red }
-        if m >= 5 { return .orange }
-        return .green
+        return Th.tone(m) ?? .secondary
     }
 
     /// "in 1h 9m" / "1h 9m ago"

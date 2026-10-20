@@ -269,7 +269,7 @@ struct StatusLine {
         // the times below keep their red for 15+ late
         let tone: (Int?) -> Color? = { m in
             guard let m else { return nil }
-            return m >= 5 ? Th.amber : .green
+            return Th.tone(m)
         }
         switch leg.phase {
         case "airborne":

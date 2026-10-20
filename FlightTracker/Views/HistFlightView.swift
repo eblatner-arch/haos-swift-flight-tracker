@@ -58,7 +58,7 @@ struct HistFlightView: View {
 
     private func banner(_ f: JSON, _ am: Int?, _ cont: Bool) -> StatusLine {
         let head = f["cancelled"].bool ? "Cancelled" : f["diverted_to"].string.map { "Diverted to \($0)" } ?? (am == nil ? "Completed" : "Arrived \(Fmt.lateLower(am))")
-        let tone: Color? = f["cancelled"].bool || f["diverted_to"].string != nil ? Th.red : am == nil ? nil : ((am ?? 0) >= 5 ? Th.amber : Th.green)
+        let tone: Color? = f["cancelled"].bool || f["diverted_to"].string != nil ? Th.red : Th.tone(am)
         var sub: [String] = []
         if f["diverted_to"].string != nil, let a = f["arr"].string { sub.append("Planned to \(a).") }
         if f["continued_by"].string != nil {

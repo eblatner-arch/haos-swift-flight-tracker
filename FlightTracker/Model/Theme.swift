@@ -12,17 +12,20 @@ enum Th {
     static let accent = Color(hex: 0x0A84FF)
     static let green = Color(hex: 0x30D158)
     static let amber = Color(hex: 0xFFB340)
-    static let red = Color(hex: 0xFF5B4F)
+    static let red = Color(hex: 0xFF453A)
+    static let orange = Color(hex: 0xFF8A3D)
     static let violet = Color(hex: 0xA78BFA)
     static let route = Color(hex: 0x4F8DFF)
     static let yellow = Color(hex: 0xF6C343)
     static let navy = Color(hex: 0x0B2E7A)
     static let radius: CGFloat = 18
 
-    /// How late, as a color: red 15+ min, amber 5+, green otherwise (nil when nothing's known yet).
+    /// How late, as a color, everywhere (banner, times, rows, Passport): green early or on time (under 5
+    /// min late), yellow delayed (5-29), orange very delayed (30+). Red is only for cancelled or diverted.
+    /// nil when nothing's known yet.
     static func tone(_ m: Int?, known: Bool = true) -> Color? {
         guard known, let m else { return nil }
-        return m >= 15 ? red : m >= 5 ? amber : green
+        return m >= 30 ? orange : m >= 5 ? amber : green
     }
     /// Times only turn red or amber (on time stays white).
     static func lateTone(_ m: Int?, known: Bool = true) -> Color? {
