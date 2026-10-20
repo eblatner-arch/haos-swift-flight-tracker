@@ -167,7 +167,12 @@ struct FlightMap: View {
             // Its filed route when the add-on has one, else the great circle; from the airplane on once it's
             // moving, and the whole of it (from its origin) until there's a position to start from.
             let flying = iph == "airborne" || iph == "taxi_out"
-            let here: CLLocationCoordinate2D? = ilive?.coordinate ?? (iph == "airborne" ? itr.last : nil)
+            // its position and heading worked out exactly like your flight's (newest of the live fix and the
+            // track; heading from the live fix, else from a point well back on the track, else toward you)
+            let iLeg = Leg(j: .object(["phase": .string(iph), "live": leg.j["inbound_live"],
+                                       "flight": .object(["track": ib["track"]]), "arr_ap": leg.j["dep_ap"]]))
+            let ipos = iLeg.position
+            let here: CLLocationCoordinate2D? = ipos?.0
             let iPlan = !["landed", "arrived", "cancelled", "diverted"].contains(iph)
             if iPlan, let a = leg.dep.coordinate {
                 let iw = ib["waypoints"].array.compactMap(coord)
@@ -184,7 +189,7 @@ struct FlightMap: View {
                 s.frame.append(oc)
             }
             if let here, flying || iph == "landed" {
-                let hdg = ilive?.heading ?? (itr.count > 1 ? bearing(itr[itr.count - 2], here) : leg.dep.coordinate.map { bearing(here, $0) } ?? 0)
+                let hdg = ipos?.1 ?? 0
                 s.planes.append(.init(id: "inbound", coordinate: here, heading: hdg, color: .purple, size: 20))
                 if open { s.frame.append(here) }
             }
@@ -214,7 +219,8 @@ struct FlightMap: View {
         if tr.count > 1 { s.lines.append(.init(id: "track", coords: tr, color: Th.violet, width: 3.5, geodesic: false)) }
         for ap in [leg.dep, leg.arr] { if let c = ap.coordinate { s.pins.append(.init(id: ap.code, label: "\(ap.city)  \(ap.code)", coordinate: c, color: Th.violet)) } }
         if let here {
-            let hdg = leg.live?.heading ?? (tr.count > 1 ? bearing(tr[tr.count - 2], here) : gc.count == 2 ? bearing(gc[0], gc[1]) : 0)
+            let pl = Leg(j: .object(["phase": .string(ph), "live": leg.j["live"], "flight": .object(["track": (raw ?? .null)["track"]]), "arr_ap": leg.j["arr_ap"]]))
+            let hdg = pl.position?.1 ?? (gc.count == 2 ? bearing(gc[0], gc[1]) : 0)
             s.planes.append(.init(id: "p", coordinate: here, heading: hdg, color: Th.violet, size: 26))
         } else if ph == "airborne", gc.count == 2, let est = estimatedPosition(leg, gc) {
             s.planes.append(.init(id: "p", coordinate: est.0, heading: est.1, color: Th.violet, size: 26))
