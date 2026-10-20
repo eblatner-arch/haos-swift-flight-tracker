@@ -590,16 +590,19 @@ struct SurfaceTargetView: View {
         if !mine && (t["kind"].string == "vehicle" || (t["cs"].isNull && t["type"].isNull)) {
             Circle().fill(Color(white: 0.56)).frame(width: 5, height: 5)
         } else {
-            ZStack(alignment: .leading) {
-                OutlinedPlane(size: (mine ? 16 : 11) + 5 * zoom, color: mine ? Color.route : .white, heading: t["hdg"].double ?? 0)
-                if let cs = t["cs"].string ?? t["squawk"].string {
-                    Text(cs).font(.system(size: (mine ? 10 : 8) + 3 * zoom, weight: .bold)).foregroundStyle(.white)
-                        .padding(.horizontal, 3 + zoom).padding(.vertical, 1)
-                        .background(mine ? Color.route : Color.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 4))
-                        .offset(x: (mine ? 14 : 9) + 5 * zoom)
-                        .fixedSize()
+            let size = (mine ? 16 : 11) + 5 * zoom
+            // the airplane alone sets the frame (so it's centered on its position); the callsign
+            // hangs off its right side without moving it
+            OutlinedPlane(size: size, color: mine ? Color.route : .white, heading: t["hdg"].double ?? 0)
+                .overlay(alignment: .leading) {
+                    if let cs = t["cs"].string ?? t["squawk"].string {
+                        Text(cs).font(.system(size: (mine ? 10 : 8) + 3 * zoom, weight: .bold)).foregroundStyle(.white)
+                            .padding(.horizontal, 3 + zoom).padding(.vertical, 1)
+                            .background(mine ? Color.route : Color.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 4))
+                            .fixedSize()
+                            .offset(x: size * 1.15 + 2)
+                    }
                 }
-            }
         }
     }
 }
@@ -619,6 +622,7 @@ struct OutlinedPlane: View {
             }
             glyph.foregroundStyle(color)
         }
+        .padding(3)   // room for the outline and shadow (even padding, so it stays centered)
         .shadow(color: .black.opacity(0.35), radius: 1.5, y: 1)
         .rotationEffect(.degrees(heading - 90))
         .drawingGroup()
