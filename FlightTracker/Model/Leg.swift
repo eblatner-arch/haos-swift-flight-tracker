@@ -325,13 +325,19 @@ let typeNames: [String: String] = [
 extension StatusLine {
     /// An FAA takeoff slot (EDCT) leads the banner, in amber: what it's for, the slot, how late it makes you.
     func withEDCT(_ leg: Leg) -> StatusLine {
-        guard leg.phase == "scheduled" || leg.phase == "taxi_out", let e = leg.edct else { return self }
-        let prog = e.program ?? leg.arr.code
-        let reason = leg.nas.first { $0["airport"].string == prog && ["gdp", "gs"].contains($0["kind"].string ?? "") }?["reason"].string?.lowercased()
-        let late = (leg.off.scheduled ?? leg.out.scheduled.map { $0.addingTimeInterval(600) }).map { Int((e.at.timeIntervalSince($0) / 60).rounded()) }
-        let lateTxt = late.map { $0 >= 1 ? " (\(Fmt.span(Double($0 * 60))) late)" : "" } ?? ""
-        let why = "Departures to \(prog) are held" + (reason.map { " for \($0)" } ?? "") + "."
-        return StatusLine(head: head, sub: "\(why) Takeoff slot \(Fmt.time(e.at, leg.dep.timeZone))\(lateTxt).", tone: Th.amber)
+        guard leg.phase == "scheduled" || leg.phase == "taxi_out" || leg.phase.isEmpty, let e = leg.edct else { return self }
+        // the web app's words: the gate, the slot and how late it makes the takeoff, and what's holding it
+        let to = e.program ?? leg.arr.code
+        let progs = leg.nas.filter { ["gdp", "gs"].contains($0["kind"].string ?? "") }
+        let prog = progs.first { $0["airport"].string == to } ?? progs.first
+        let why = prog?["reason"].string.map { " for \($0.lowercased())" } ?? ""
+        let held = prog?["kind"].string == "gs" ? "by a ground stop" : "by a ground delay program"
+        let late = leg.off.scheduled.map { Int((e.at.timeIntervalSince($0) / 60).rounded()) }
+        let dm = leg.out.lateMinutes ?? 0
+        let gate = leg.phase == "taxi_out" || !leg.outKnown ? "" : dm >= 5 ? "Gate \(Fmt.span(Double(dm * 60))) late. " : "Gate on time. "
+        let slot = "Takeoff slot (EDCT) \(Fmt.time(e.at, leg.dep.timeZone))" + (late.map { $0 >= 1 ? ", \(Fmt.span(Double($0 * 60))) late" : "" } ?? "") + ". "
+        // amber, not red: it's a hold, not a failure (red stays red)
+        return StatusLine(head: head, sub: gate + slot + "Departures to \(to) are held \(held)\(why).", tone: tone == .red ? .red : Th.amber)
     }
 }
 
