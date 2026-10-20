@@ -265,9 +265,11 @@ struct StatusLine {
             if abs(m) < 5 { return "on time" }
             return m > 0 ? "\(Fmt.span(Double(m * 60))) late" : "\(Fmt.span(Double(-m * 60))) early"
         }
+        // the banner: yellow when late (a delay is a heads-up), red only for cancelled or diverted;
+        // the times below keep their red for 15+ late
         let tone: (Int?) -> Color? = { m in
             guard let m else { return nil }
-            return m >= 15 ? .red : m >= 5 ? .orange : .green
+            return m >= 5 ? Th.amber : .green
         }
         switch leg.phase {
         case "airborne":
