@@ -94,6 +94,8 @@ struct RootView: View {
                 try? await Task.sleep(for: .seconds(60))
             }
         }
+        // live: the add-on's change events refresh at once (the minute's check above is the backstop)
+        .task { await store.watchChanges() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { Task { await store.refresh() } }
         }

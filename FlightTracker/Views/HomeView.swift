@@ -358,8 +358,9 @@ struct NasAlertCard: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear { if startOpen { expanded = true } }
-        .background(color.opacity(0.13), in: RoundedRectangle(cornerRadius: Th.radius, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Th.radius, style: .continuous).stroke(color.opacity(0.55), lineWidth: 1))
+        // one that holds none of your flights (yours leaving its airport, already flying) is quiet: gray
+        .background(g.holds ? color.opacity(0.13) : Th.card, in: RoundedRectangle(cornerRadius: Th.radius, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Th.radius, style: .continuous).stroke(g.holds ? color.opacity(0.55) : Th.line, lineWidth: 1))
     }
 
     /// "Includes UA2677 from BNA (ZME)", true = held, false = not, nil = can't tell
@@ -387,15 +388,16 @@ struct NasTrendCard: View {
     var body: some View {
         let n = g.n
         let sub = [n["detail"].string, n["reason"].string?.capitalized].compactMap { $0 }.joined(separator: " · ")
-        HStack(alignment: .top, spacing: 14) {
-            Text(g.airport).font(.system(size: 17, weight: .heavy)).padding(.top, 8)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(n["label"].string ?? "").font(.system(size: 16, weight: .bold))
-                if !sub.isEmpty { Text(sub).font(.subheadline).foregroundStyle(Th.muted) }
-                if many { Text(g.uses.map { "\($0.leg.display) \($0.leg.dep.code)→\($0.leg.arr.code)" }.joined(separator: " · ")).font(.caption).foregroundStyle(Th.faint) }
+        // a quiet one-liner: a trend is information, not an alert
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(g.airport).font(.system(size: 14, weight: .heavy))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(n["label"].string ?? "").font(.system(size: 14, weight: .semibold))
+                if !sub.isEmpty { Text(sub).font(.system(size: 12)).foregroundStyle(Th.muted).lineLimit(1) }
+                if many { Text(g.uses.map { "\($0.leg.display) \($0.leg.dep.code)→\($0.leg.arr.code)" }.joined(separator: " · ")).font(.system(size: 11)).foregroundStyle(Th.faint).lineLimit(1) }
             }
         }
-        .padding(14)
+        .padding(.horizontal, 14).padding(.vertical, 9)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Th.card, in: RoundedRectangle(cornerRadius: Th.radius, style: .continuous))
         .overlay(alignment: .leading) { UnevenRoundedRectangle(topLeadingRadius: Th.radius, bottomLeadingRadius: Th.radius).fill(Th.amber).frame(width: 4) }

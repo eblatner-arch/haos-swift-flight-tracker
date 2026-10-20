@@ -334,3 +334,16 @@ extension StatusLine {
         return StatusLine(head: head, sub: "\(why) Takeoff slot \(Fmt.time(e.at, leg.dep.timeZone))\(lateTxt).", tone: Th.amber)
     }
 }
+
+extension StatusLine {
+    /// The FAA's delay trend at an airport you're headed into (or leaving, before you've left), after
+    /// anything else the banner says (the EDCT comes first).
+    func withTrend(_ leg: Leg) -> StatusLine {
+        let sched = leg.phase == "scheduled" || leg.phase.isEmpty
+        guard !["arrived", "cancelled"].contains(leg.phase),
+              let n = leg.nas.first(where: { $0["kind"].string == "delay" && ($0["airport"].string == leg.arr.code || (sched && $0["airport"].string == leg.dep.code)) })
+        else { return self }
+        let t = "\(n["airport"].string ?? ""): \(n["label"].string ?? "Delays")" + (n["detail"].string.map { " (\($0))" } ?? "") + "."
+        return StatusLine(head: head, sub: sub.isEmpty ? t : sub + " " + t, tone: tone)
+    }
+}

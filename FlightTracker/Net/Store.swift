@@ -169,6 +169,34 @@ final class Store {
         details[id] ?? legs.first { $0.id == id }
     }
 
+    /// The add-on says when anything changes (server-sent events, like the web app uses): refresh the
+    /// list then, and the open flight's page, instead of waiting for the next minute's check.
+    @ObservationIgnored var openDetail: String?
+    func watchChanges() async {
+        while !Task.isCancelled {
+            guard let u = API.url("api/events") else { try? await Task.sleep(for: .seconds(10)); continue }
+            var req = URLRequest(url: u, timeoutInterval: 60)
+            req.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+            do {
+                let (bytes, resp) = try await API.session.bytes(for: req)
+                guard (resp as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+                var ping = false
+                for try await line in bytes.lines {
+                    if line.hasPrefix("event:") { ping = line.contains("ping"); continue }
+                    guard line.hasPrefix("data:") else { continue }
+                    if ping { ping = false; continue }
+                    // a burst of changes is one refresh
+                    try? await Task.sleep(for: .milliseconds(600))
+                    await refresh()
+                    if let id = openDetail { await loadDetail(id) }
+                }
+            } catch {
+                if Task.isCancelled { return }
+            }
+            try? await Task.sleep(for: .seconds(5))
+        }
+    }
+
     /// a good answer from the add-on since the app opened
     var connected = false
 
@@ -213,6 +241,8 @@ final class Store {
         var leg = Leg(j: r.0)
         if let old = details[id], fromPhone { leg = old }   // a fresher one in memory beats the saved copy
         details[id] = leg
+        // the list (and the home map) show the same news right away, not at the next list refresh
+        if !fromPhone, let i = legs.firstIndex(where: { $0.id == id }) { legs[i] = leg }
         if !fromPhone { offline = false }
     }
 
