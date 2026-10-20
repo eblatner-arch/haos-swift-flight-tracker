@@ -133,7 +133,7 @@ final class Store {
         guard !code.isEmpty, code != "?", !layoutAsked.contains(code) else { return }
         layoutAsked.insert(code)
         if let r = try? await API.get("api/airport/\(code)/layout", timeout: 40), !r.0["features"].array.isEmpty {
-            layouts[code] = AirportLayout(r.0)
+            layouts[code] = AirportLayout(r.0, base: (layouts.count + 1) * 1_000_000)
         } else {
             layoutAsked.remove(code)
         }

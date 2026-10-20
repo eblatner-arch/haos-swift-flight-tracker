@@ -413,42 +413,43 @@ struct FlightMap: View {
     }
 
     /// the diagrams of this page's airports, flattened: (key, shape)
-    private var shownLayouts: [AirportLayout] { camDist < 40_000 ? layoutCodes.compactMap { store.layouts[$0] } : [] }
+    /// the screen (a little beyond it), or nothing when zoomed out past the airports
+    private var drawBox: MKMapRect? {
+        guard camDist < 40_000, !seen.isNull else { return nil }
+        return seen.insetBy(dx: -seen.size.width * 0.25, dy: -seen.size.height * 0.25)
+    }
+    /// the airport diagrams on screen (usually one)
+    private var shownLayouts: [AirportLayout] {
+        guard let box = drawBox else { return [] }
+        return layoutCodes.compactMap { store.layouts[$0] }.filter { $0.box.intersects(box) }
+    }
 
     @MapContentBuilder private var layoutContent: some MapContent {
+        let box = drawBox ?? .null
         let Ls = shownLayouts
-        let terms: [[CLLocationCoordinate2D]] = Ls.flatMap(\.terminals)
-        let twys: [[CLLocationCoordinate2D]] = Ls.flatMap(\.taxiways)
-        let rwys: [[CLLocationCoordinate2D]] = Ls.flatMap(\.runways)
+        // only the shapes on screen, each with a stable id (so panning adds and removes a few, not redraws all)
+        let terms = Ls.flatMap(\.terminals).filter { $0.box.intersects(box) }
+        let twys = Ls.flatMap(\.taxiways).filter { $0.box.intersects(box) }
+        let rwys = Ls.flatMap(\.runways).filter { $0.box.intersects(box) }
         let labels: [AirportLayout.Label] = Ls.flatMap { layoutLabels($0) }
         let twW: CGFloat = max(1.5, 23 * pointsPerMeter), rwW: CGFloat = max(3, 45 * pointsPerMeter)
         let fillC = Color(hex: 0xC8CDD8)
-        ForEach(terms.indices, id: \.self) { i in
-            MapPolygon(coordinates: terms[i]).foregroundStyle(fillC.opacity(0.16)).stroke(fillC.opacity(0.5), lineWidth: 1)
+        ForEach(terms) { t in
+            MapPolygon(coordinates: t.coords).foregroundStyle(fillC.opacity(0.16)).stroke(fillC.opacity(0.5), lineWidth: 1)
         }
-        ForEach(twys.indices, id: \.self) { i in
-            MapPolyline(coordinates: twys[i]).stroke(Color.white.opacity(0.14), style: StrokeStyle(lineWidth: twW, lineCap: .round, lineJoin: .round))
+        ForEach(twys) { t in
+            MapPolyline(coordinates: t.coords).stroke(Color.white.opacity(0.14), style: StrokeStyle(lineWidth: twW, lineCap: .round, lineJoin: .round))
         }
-        ForEach(rwys.indices, id: \.self) { i in
-            MapPolyline(coordinates: rwys[i]).stroke(Color.white.opacity(0.24), style: StrokeStyle(lineWidth: rwW, lineCap: .butt))
+        ForEach(rwys) { r in
+            MapPolyline(coordinates: r.coords).stroke(Color.white.opacity(0.24), style: StrokeStyle(lineWidth: rwW, lineCap: .butt))
         }
-        ForEach(rwys.indices, id: \.self) { i in
-            MapPolyline(coordinates: rwys[i]).stroke(Color.white.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [8, 8]))
+        ForEach(rwys) { r in
+            MapPolyline(coordinates: r.coords).stroke(Color.white.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [8, 8]))
         }
-        ForEach(labels.indices, id: \.self) { i in
-            Annotation("", coordinate: labels[i].at, anchor: .center) { LayoutLabelView(label: labels[i]) }
+        ForEach(labels) { lb in
+            Annotation("", coordinate: lb.at, anchor: .center) { LayoutLabelView(label: lb) }
                 .annotationTitles(.hidden)
         }
-    }
-
-    private var surfHasMine: Bool { camDist < 25_000 && surf.contains { $0["mine"].bool && $0["lat"].double != nil } }
-
-    /// surface targets with a position
-    private var surfTargets: [(CLLocationCoordinate2D, JSON)] {
-        camDist < 25_000 ? surf.compactMap { t in
-            guard let la = t["lat"].double, let lo = t["lon"].double else { return nil }
-            return (CLLocationCoordinate2D(latitude: la, longitude: lo), t)
-        } : []
     }
 
     @MapContentBuilder private var surfaceContent: some MapContent {
@@ -547,7 +548,7 @@ struct FlightMap: View {
             case .gate: return camDist < 3_500
             }
         }.filter { box.contains(MKMapPoint($0.at)) }
-        return Array(ok.prefix(110))
+        return Array(ok.prefix(80))
     }
 
     /// The whole map's rectangle (same shape as the screen) that puts the points in the open area
@@ -627,18 +628,12 @@ struct OutlinedPlane: View {
     let color: Color
     let heading: Double
     var body: some View {
-        let w = max(1, size / 14)
-        let glyph = Image(systemName: "airplane").font(.system(size: size, weight: .bold))
+        // two glyphs: a heavier black one behind makes the outline (cheap; no per-airplane offscreen drawing)
         ZStack {
-            ForEach(0..<8, id: \.self) { i in
-                let a = Double(i) * .pi / 4
-                glyph.foregroundStyle(.black).offset(x: cos(a) * w, y: sin(a) * w)
-            }
-            glyph.foregroundStyle(color)
+            Image(systemName: "airplane").font(.system(size: size * 1.16, weight: .black)).foregroundStyle(.black)
+            Image(systemName: "airplane").font(.system(size: size, weight: .bold)).foregroundStyle(color)
         }
-        .padding(3)   // room for the outline and shadow (even padding, so it stays centered)
-        .shadow(color: .black.opacity(0.35), radius: 1.5, y: 1)
+        .padding(2)
         .rotationEffect(.degrees(heading - 90))
-        .drawingGroup()
     }
 }

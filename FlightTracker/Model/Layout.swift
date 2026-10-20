@@ -1,17 +1,32 @@
 import Foundation
 import CoreLocation
+import MapKit
 
 /// An airport's diagram from OpenStreetMap (the add-on fetches it once): terminals, runways,
 /// taxiways, and the names to write on them.
 struct AirportLayout {
-    struct Label { let id: Int; let at: CLLocationCoordinate2D; let text: String; let kind: Kind }
+    struct Label: Identifiable { let id: Int; let at: CLLocationCoordinate2D; let text: String; let kind: Kind }
     enum Kind { case terminal, runway, taxiway, gate }
-    var terminals: [[CLLocationCoordinate2D]] = []
-    var runways: [[CLLocationCoordinate2D]] = []
-    var taxiways: [[CLLocationCoordinate2D]] = []
+    /// one drawn shape, with a stable id and its box (to draw only what's on screen)
+    struct Shape: Identifiable {
+        let id: Int
+        let coords: [CLLocationCoordinate2D]
+        let box: MKMapRect
+        init(_ id: Int, _ c: [CLLocationCoordinate2D]) {
+            self.id = id; coords = c
+            box = c.reduce(MKMapRect.null) { $0.union(MKMapRect(origin: MKMapPoint($1), size: MKMapSize(width: 1, height: 1))) }
+        }
+    }
+    var terminals: [Shape] = []
+    var runways: [Shape] = []
+    var taxiways: [Shape] = []
     var labels: [Label] = []
+    /// the whole airport's box
+    var box: MKMapRect = .null
 
-    init(_ d: JSON) {
+    /// base: keeps ids apart between airports on screen together
+    init(_ d: JSON, base: Int = 0) {
+        defer { box = (terminals + runways + taxiways).reduce(MKMapRect.null) { $0.union($1.box) } }
         func pts(_ g: JSON) -> [CLLocationCoordinate2D] {
             g.array.compactMap { p in
                 guard let la = p[0].double, let lo = p[1].double else { return nil }
@@ -37,23 +52,23 @@ struct AirportLayout {
         }
         var placed: [String: [CLLocationCoordinate2D]] = [:]
         func near(_ ref: String, _ p: CLLocationCoordinate2D, _ k: Double) -> Bool { (placed[ref] ?? []).contains { km($0, p) < k } }
-        var n = 0
+        var n = base
         func add(_ at: CLLocationCoordinate2D, _ text: String, _ kind: Kind) { labels.append(Label(id: n, at: at, text: text, kind: kind)); n += 1 }
         for f in d["features"].array {
             let k = f["k"].string ?? "", ref = f["ref"].string
             let line = f["g"][0].array.isEmpty ? [] : pts(f["g"])
             switch k {
             case "terminal" where line.count > 2:
-                terminals.append(line)
+                terminals.append(Shape(n, line)); n += 1
                 if let t = f["name"].string ?? ref {
                     let c = CLLocationCoordinate2D(latitude: line.map(\.latitude).reduce(0, +) / Double(line.count), longitude: line.map(\.longitude).reduce(0, +) / Double(line.count))
                     add(c, t, .terminal)
                 }
             case "runway" where line.count > 1:
-                runways.append(line)
+                runways.append(Shape(n, line)); n += 1
                 if let r = ref { add(mid(line).0, r.replacingOccurrences(of: #"^0"#, with: "", options: .regularExpression).replacingOccurrences(of: "/0", with: "/"), .runway) }
             case "taxiway" where line.count > 1:
-                taxiways.append(line)
+                taxiways.append(Shape(n, line)); n += 1
                 if let r = ref {
                     let (p, len) = mid(line)
                     if len < 0.08 || near(r, p, 0.35) { continue }
