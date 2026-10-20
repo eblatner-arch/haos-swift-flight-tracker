@@ -145,7 +145,9 @@ struct FlightMap: View {
             }
         }
         var flown = leg.track.map(\.coordinate)
-        if let lv = leg.live, ["airborne", "taxi_out", "landed"].contains(leg.phase) { flown.append(lv.coordinate) }
+        // the line runs up to the airplane (the newest of the live fix and the track, never back to an older one)
+        if let p = leg.position?.0, ["airborne", "taxi_out", "landed"].contains(leg.phase),
+           flown.last.map({ $0.latitude != p.latitude || $0.longitude != p.longitude }) ?? true { flown.append(p) }
         if flown.count > 1 { s.lines.append(.init(id: "track", coords: flown, color: .route, width: 4, geodesic: false)) }
         // the airplane bringing you in, while it still matters
         let ib = leg.inbound

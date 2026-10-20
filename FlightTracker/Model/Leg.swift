@@ -147,22 +147,33 @@ struct Leg: Identifiable, Equatable {
     }
 
     /// Where the airplane is now, and which way it's pointing.
+    /// Where the airplane is and which way it points, as the web app works it out: the newest of the
+    /// live fix and the track's last point (the track can be newer than a radar fix), its own heading
+    /// when the live fix is the newest and has one, else the direction along the track from a point at
+    /// least ~15 km back (over a couple of km, sources that disagree can point it backwards), else
+    /// toward where it's going.
     var position: (CLLocationCoordinate2D, Double)? {
         guard ["airborne", "landed"].contains(phase) || phase.contains("taxi") else { return nil }
         let tr = track
-        // no heading and no track (the list's copy of a flight): point it at where it's going
         let toward = { (p: CLLocationCoordinate2D) in self.arr.coordinate.map { bearing(p, $0) } ?? 0 }
-        if let lv = live {
-            let hdg = lv.heading ?? (tr.count > 1 ? tr.last.map { bearing($0.coordinate, lv.coordinate) } : nil) ?? toward(lv.coordinate)
-            return (lv.coordinate, hdg)
+        var pos: CLLocationCoordinate2D?, t = -Double.infinity, liveNewest = false
+        if let lv = live { pos = lv.coordinate; t = lv.at; liveNewest = true }
+        if let last = tr.last, pos == nil || last.at > t + 5 { pos = last.coordinate; t = last.at > 0 ? last.at : .infinity; liveNewest = false }
+        if pos == nil, let la = flight["last_position"][0].double, let lo = flight["last_position"][1].double {
+            pos = CLLocationCoordinate2D(latitude: la, longitude: lo)
         }
-        if tr.isEmpty, let la = flight["last_position"][0].double, let lo = flight["last_position"][1].double {
-            let p = CLLocationCoordinate2D(latitude: la, longitude: lo)
-            return (p, toward(p))
+        guard let p = pos else { return nil }
+        if liveNewest, let h = live?.heading { return (p, h) }
+        let before = tr.filter { !($0.at > 0 && t != .infinity && $0.at >= t) && !($0.coordinate.latitude == p.latitude && $0.coordinate.longitude == p.longitude) }
+        for q in before.reversed() {
+            let dy = q.coordinate.latitude - p.latitude, dx = (q.coordinate.longitude - p.longitude) * cos(p.latitude * .pi / 180)
+            if (dx * dx + dy * dy).squareRoot() > 0.135 { return (p, bearing(q.coordinate, p)) }   // ~15 km
         }
-        guard let last = tr.last else { return nil }
-        let prev = tr.count > 1 ? tr[tr.count - 2].coordinate : dep.coordinate ?? last.coordinate
-        return (last.coordinate, bearing(prev, last.coordinate))
+        if let far = before.first, abs(far.coordinate.latitude - p.latitude) + abs(far.coordinate.longitude - p.longitude) > 0.02 {
+            return (p, bearing(far.coordinate, p))
+        }
+        if let h = live?.heading { return (p, h) }
+        return (p, toward(p))
     }
 
     var inbound: JSON { j["inbound"] }
