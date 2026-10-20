@@ -163,23 +163,30 @@ struct FlightMap: View {
             let ilive = LivePosition(leg.j["inbound_live"])
             if let lv = ilive, ["airborne", "landed", "taxi_out"].contains(iph) { itr.append(lv.coordinate) }
             if itr.count > 1 { s.lines.append(.init(id: "itrack", coords: itr, color: .purple.opacity(open ? 0.9 : 0.35), width: 2.5, geodesic: false)) }
-            // where it is now: the dashed line is only what's left to fly
+            // where it is now, then the dashed line: only what's left to fly, the same as your flight's.
+            // Its filed route when the add-on has one, else the great circle; from the airplane on once it's
+            // moving, and the whole of it (from its origin) until there's a position to start from.
             let flying = iph == "airborne" || iph == "taxi_out"
-            let here = flying ? (ilive?.coordinate ?? itr.last) : nil
-            let notYet = iph == "scheduled" || iph.isEmpty
-            if open, notYet || here != nil, let a = leg.dep.coordinate {
-                if let here {
-                    s.lines.append(.init(id: "iplan", coords: [here, a], color: .purple.opacity(0.45), width: 2, geodesic: true, dashed: true))
-                    s.frame.append(here)
-                } else if let oc = o.coordinate {
-                    s.lines.append(.init(id: "iplan", coords: [oc, a], color: .purple.opacity(0.45), width: 2, geodesic: true, dashed: true))
-                    s.pins.append(.init(id: "i-" + o.code, label: o.code, coordinate: oc, color: .purple))
-                    s.frame.append(oc)
+            let here: CLLocationCoordinate2D? = ilive?.coordinate ?? (iph == "airborne" ? itr.last : nil)
+            let iPlan = !["landed", "arrived", "cancelled", "diverted"].contains(iph)
+            if iPlan, let a = leg.dep.coordinate {
+                let iw = ib["waypoints"].array.compactMap(coord)
+                let base = iw.count > 1 ? iw : (o.coordinate.map { [$0, a] } ?? [])
+                var ahead = base
+                if flying, let here { ahead = iw.count > 1 ? remaining(iw, from: here) : [here, a] }
+                if ahead.count > 1 {
+                    s.lines.append(.init(id: "iplan", coords: ahead, color: .purple.opacity(0.45), width: 2, geodesic: iw.count <= 1, dashed: true))
                 }
+                if open { s.frame += ahead.isEmpty ? [] : [ahead[0]] }
             }
-            if let here, iph == "airborne" {
-                let hdg = ilive?.heading ?? (itr.count > 1 ? bearing(itr[itr.count - 2], here) : 0)
+            if open, let oc = o.coordinate {
+                s.pins.append(.init(id: "i-" + o.code, label: o.code, coordinate: oc, color: .purple))
+                s.frame.append(oc)
+            }
+            if let here, flying || iph == "landed" {
+                let hdg = ilive?.heading ?? (itr.count > 1 ? bearing(itr[itr.count - 2], here) : leg.dep.coordinate.map { bearing(here, $0) } ?? 0)
                 s.planes.append(.init(id: "inbound", coordinate: here, heading: hdg, color: .purple, size: 20))
+                if open { s.frame.append(here) }
             }
         }
         for ap in [leg.dep, leg.arr] {
