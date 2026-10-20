@@ -711,11 +711,29 @@ private struct DetailsKV: View {
             ("Filed speed", f["filed_speed"].double.map { "\(Int($0)) kt" }),
             ("Distance", f["distance_nm"].double.map { "\(Int($0)) nm" }),
             ("Live", leg.live.map { "\(Int($0.altitude ?? 0)) ft · \(Int($0.speed ?? 0)) kt · \($0.source ?? "adsb.lol")" }),
+            ("Metering (TBFM)", tbfm),
+            ("EDCT from", ["TBFM": "TBFM (metering)", "flight plan": "the refiled flight plan (a slot swap)", "clearance": "the datalink clearance"][f["swim"]["edct_src"].string ?? ""]),
             ("Data from", leg.j["source"].string),
             ("Updated", leg.j["updated"].date.map { Fmt.ago($0) }),
             ("Calendar", leg.j["summary"].string),
         ]
         return all.compactMap { r in r.1.flatMap { $0.isEmpty ? nil : (r.0, $0) } }
+    }
+
+    /// what the metering system says: release time, its EDCT, meter fix, runway, scheduled landing
+    private var tbfm: String? {
+        let t = leg.flight["swim"]["tbfm"]
+        guard !t.isNull else { return nil }
+        let iso = { (k: String) -> Date? in t[k].string.flatMap { ISO8601DateFormatter().date(from: $0) } }
+        let parts: [String?] = [
+            iso("ctm").map { "release \(Fmt.time($0, leg.dep.timeZone))" },
+            iso("etm").map { "EDCT \(Fmt.time($0, leg.dep.timeZone))" },
+            t["mfx"].string.map { "meter fix \($0)" },
+            (t["trw"].string ?? t["rwy"].string).map { "runway \($0)" },
+            iso("sta").map { "scheduled landing \(Fmt.time($0, leg.arr.timeZone))" },
+        ]
+        let s = parts.compactMap { $0 }.joined(separator: " · ")
+        return s.isEmpty ? nil : s
     }
 
     var body: some View {
