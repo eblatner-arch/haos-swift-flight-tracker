@@ -725,13 +725,16 @@ private struct DetailsKV: View {
         let t = leg.flight["swim"]["tbfm"]
         guard !t.isNull else { return nil }
         let iso = { (k: String) -> Date? in t[k].string.flatMap { ISO8601DateFormatter().date(from: $0) } }
+        // the live feed's fields: std = metered release, etm = EDCT, sta_rwy = metered landing (eta_rwy its
+        // estimate), mfx = meter fix (sta_sfx / eta_mfx its times), drw/trw = runway. ctm isn't a release time.
+        let rwy = (t["trw"].string ?? t["drw"].string).map { $0.replacingOccurrences(of: #"^\w+_"#, with: "", options: .regularExpression) }
+        let fixAt = iso("sta_sfx").map { " at \(Fmt.time($0, leg.arr.timeZone))" } ?? iso("eta_mfx").map { " ~\(Fmt.time($0, leg.arr.timeZone))" } ?? ""
         let parts: [String?] = [
-            iso("ctm").map { "release \(Fmt.time($0, leg.dep.timeZone))" },
+            iso("std").map { "release \(Fmt.time($0, leg.dep.timeZone))" },
             iso("etm").map { "EDCT \(Fmt.time($0, leg.dep.timeZone))" },
-            t["mfx"].string.map { "meter fix \($0)" },
-            (t["trw"].string ?? t["rwy"].string).map { "runway \($0)" },
-            (iso("sta_rwy") ?? iso("sta")).map { "scheduled landing \(Fmt.time($0, leg.arr.timeZone))" },
-            iso("sta_mfx").map { "meter fix at \(Fmt.time($0, leg.arr.timeZone))" } ?? iso("eta_mfx").map { "meter fix ~\(Fmt.time($0, leg.arr.timeZone))" },
+            iso("sta_rwy").map { "scheduled landing \(Fmt.time($0, leg.arr.timeZone))" } ?? iso("eta_rwy").map { "landing est. \(Fmt.time($0, leg.arr.timeZone))" },
+            t["mfx"].string.map { "meter fix \($0)\(fixAt)" },
+            rwy.map { "runway \($0)" },
         ]
         let s = parts.compactMap { $0 }.joined(separator: " · ")
         return s.isEmpty ? nil : s
