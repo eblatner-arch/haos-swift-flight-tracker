@@ -339,6 +339,10 @@ extension StatusLine {
         let gate = leg.phase == "taxi_out" || !leg.outKnown ? "" : dm >= 5 ? "Gate \(Fmt.span(Double(dm * 60))) late. " : "Gate on time. "
         let slot = "Takeoff slot (EDCT) \(Fmt.time(e.at, leg.dep.timeZone))" + (late.map { $0 >= 1 ? ", \(Fmt.span(Double($0 * 60))) late" : "" } ?? "") + ". "
         // amber, not red: it's a hold, not a failure (red stays red)
+        // the airline's gate time (or the tower's estimate) is after the slot on file: it has probably moved
+        if leg.flight["swim"]["edct"]["stale"].bool {
+            return StatusLine(head: head, sub: gate + "Departures to \(to) are held \(held)\(why). The takeoff slot on file (\(Fmt.time(e.at, leg.dep.timeZone))) is before the gate departure, so it has probably moved (an airline slot swap the FAA feed doesn't share).", tone: tone == .red ? .red : Th.amber)
+        }
         return StatusLine(head: head, sub: gate + slot + "Departures to \(to) are held \(held)\(why).", tone: tone == .red ? .red : Th.amber)
     }
 }
