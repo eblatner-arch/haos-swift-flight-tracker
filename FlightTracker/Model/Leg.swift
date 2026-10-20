@@ -150,9 +150,15 @@ struct Leg: Identifiable, Equatable {
     var position: (CLLocationCoordinate2D, Double)? {
         guard ["airborne", "landed"].contains(phase) || phase.contains("taxi") else { return nil }
         let tr = track
+        // no heading and no track (the list's copy of a flight): point it at where it's going
+        let toward = { (p: CLLocationCoordinate2D) in self.arr.coordinate.map { bearing(p, $0) } ?? 0 }
         if let lv = live {
-            let hdg = lv.heading ?? tr.last.map { bearing($0.coordinate, lv.coordinate) } ?? 0
+            let hdg = lv.heading ?? (tr.count > 1 ? tr.last.map { bearing($0.coordinate, lv.coordinate) } : nil) ?? toward(lv.coordinate)
             return (lv.coordinate, hdg)
+        }
+        if tr.isEmpty, let la = flight["last_position"][0].double, let lo = flight["last_position"][1].double {
+            let p = CLLocationCoordinate2D(latitude: la, longitude: lo)
+            return (p, toward(p))
         }
         guard let last = tr.last else { return nil }
         let prev = tr.count > 1 ? tr[tr.count - 2].coordinate : dep.coordinate ?? last.coordinate

@@ -477,20 +477,20 @@ struct StatusPills: View {
     var body: some View {
         let b = store.stateJ["backup"]
         let st = b["state"].string ?? "off"
-        HStack(spacing: 6) {
+        HStack(spacing: 5) {
             // Live once the add-on has answered; Offline showing the saved copy; Connecting until then
             let live = store.connected && !store.offline
             let c: Color = live ? Th.green : store.offline ? Th.muted : Th.amber
             pill(color: c) {
-                Circle().fill(c).frame(width: 7, height: 7)
-                Text(live ? "Live" : store.offline ? "Offline" : "Connecting").font(.system(size: 12, weight: .bold))
+                Circle().fill(c).frame(width: 6, height: 6)
+                Text(live ? "Live" : store.offline ? "Offline" : "Connecting").font(.system(size: 11, weight: .bold))
             }
             if st != "off" {
                 let c: Color = st == "synced" ? Th.green : st == "waiting" ? Th.amber : st == "syncing" ? Th.accent : Th.red
                 Button(action: openSettings) {
                     pill(color: c) {
-                        Image(systemName: "icloud.fill").font(.system(size: 11, weight: .bold))
-                        Text(st == "syncing" ? "Syncing" : st == "error" ? "Drive !" : st == "disconnected" ? "Drive off" : "Drive").font(.system(size: 12, weight: .bold))
+                        Image(systemName: "icloud.fill").font(.system(size: 10, weight: .bold))
+                        Text(st == "syncing" ? "Syncing" : st == "error" ? "Drive !" : st == "disconnected" ? "Drive off" : "Drive").font(.system(size: 11, weight: .bold))
                     }
                 }
                 .buttonStyle(.plain)
@@ -499,9 +499,9 @@ struct StatusPills: View {
     }
 
     private func pill<C: View>(color: Color, @ViewBuilder _ c: () -> C) -> some View {
-        HStack(spacing: 5) { c() }
+        HStack(spacing: 4) { c() }
             .foregroundStyle(color)
-            .padding(.horizontal, 9).padding(.vertical, 5)
+            .padding(.horizontal, 8).padding(.vertical, 4)
             .background(Color(hex: 0x1C1C1F, alpha: 0.88), in: Capsule())
             .overlay(Capsule().stroke(color.opacity(0.4), lineWidth: 1))
     }

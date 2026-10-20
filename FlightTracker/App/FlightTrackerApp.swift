@@ -358,20 +358,21 @@ struct Telemetry: View {
     var body: some View {
         if case .leg(let id)? = route, let leg = store.leg(id), leg.phase == "airborne", let lv = leg.live, let gs = lv.speed {
             HStack(spacing: 16) {
-                HStack(spacing: 5) {
-                    Image(systemName: "speedometer").foregroundStyle(Th.muted)
-                    Text("\(Int(gs * 1.15078).formatted())").font(.system(size: 17, weight: .bold))
-                    Text("MPH").font(.system(size: 11, weight: .bold)).foregroundStyle(Th.muted)
+                HStack(spacing: 4) {
+                    Image(systemName: "speedometer").font(.system(size: 11)).foregroundStyle(Th.muted)
+                    Text("\(Int(gs * 1.15078).formatted())").font(.system(size: 13, weight: .bold))
+                    Text("MPH").font(.system(size: 9, weight: .bold)).foregroundStyle(Th.muted)
                 }
-                HStack(spacing: 5) {
-                    Image(systemName: "arrow.up.to.line").foregroundStyle(Th.muted)
-                    Text(lv.altitude.map { Int($0).formatted() } ?? "—").font(.system(size: 17, weight: .bold))
-                    Text("FT").font(.system(size: 11, weight: .bold)).foregroundStyle(Th.muted)
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.up.to.line").font(.system(size: 11)).foregroundStyle(Th.muted)
+                    Text(lv.altitude.map { Int($0).formatted() } ?? "—").font(.system(size: 13, weight: .bold))
+                    Text("FT").font(.system(size: 9, weight: .bold)).foregroundStyle(Th.muted)
                 }
             }
-            .padding(.horizontal, 16).padding(.vertical, 9)
+            .padding(.horizontal, 11).padding(.vertical, 6)
             .background(Color(hex: 0x26262A, alpha: 0.94), in: Capsule())
-            .padding(.top, 8)
+            // under the Live and Drive pills, clear of them and the round buttons
+            .padding(.top, 40)
         }
     }
 }
