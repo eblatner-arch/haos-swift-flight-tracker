@@ -65,6 +65,10 @@ struct FlightMap: View {
     /// what's on screen now, and how far up the camera is (for the airport diagrams)
     @State private var seen: MKMapRect = .null
     @State private var camDist: Double = 1e7
+    /// you moved the map yourself (pinch, pan): sliding the sheet or new data won't snap it back
+    @State private var userMoved = false
+    /// when the app last moved the camera itself (its own moves end within this window)
+    @State private var autoAt = Date.distantPast
     /// FAA surface radar at the airport you're looking at (yours, or your inbound's)
     @State private var surf: [JSON] = []
     /// Map shape (Settings): flat frames routes exactly; the globe looks like Flighty's but has to zoom out further
@@ -342,6 +346,7 @@ struct FlightMap: View {
         .onMapCameraChange(frequency: .onEnd) { ctx in
             seen = ctx.rect
             camDist = ctx.camera.distance
+            if want == nil, Date().timeIntervalSince(autoAt) > 1.6 { userMoved = true }
             guard let w = want else { return }
             want = nil
             // too far out (or in, or off center): put the camera right over the wanted framing
@@ -349,6 +354,7 @@ struct FlightMap: View {
             let dx = abs(ctx.rect.midX - w.midX) / max(1, w.size.width), dy = abs(ctx.rect.midY - w.midY) / max(1, w.size.height)
             guard ratio > 0.05, ratio < 20, abs(ratio - 1) > 0.05 || dx > 0.03 || dy > 0.03 else { return }
             let c = MKMapPoint(x: w.midX, y: w.midY).coordinate
+            autoAt = Date()
             withAnimation(.easeInOut(duration: 0.35)) {
                 camera = .camera(MapCamera(centerCoordinate: c, distance: ctx.camera.distance / ratio, heading: 0, pitch: 0))
             }
@@ -364,9 +370,9 @@ struct FlightMap: View {
         }
         .task(id: layoutCodes) { for c in layoutCodes { await store.loadLayout(c) } }
         .onChange(of: store.focusTick) { _, _ in apply(store.mapFocus) }
-        .onChange(of: area) { _, _ in apply(store.mapFocus, quick: true) }
+        .onChange(of: area) { _, _ in if !userMoved { apply(store.mapFocus, quick: true, keepUser: true) } }
         .onChange(of: covered) { _, c in
-            if !c, let f = pendingFocus { pendingFocus = nil; apply(f, quick: true) }
+            if !c, let f = pendingFocus, !userMoved { pendingFocus = nil; apply(f, quick: true, keepUser: true) }
         }
         .onChange(of: frameKey(sc)) { _, _ in apply(.fit) }
         .onAppear { apply(.fit) }
@@ -457,11 +463,13 @@ struct FlightMap: View {
 
     /// changes when there's something new to frame (another page, or its data arrived)
     private func frameKey(_ s: MapScene) -> String {
-        return "\(String(describing: route))|\(tab.rawValue)|\(s.lines.count)|\(s.pins.count)"
+        // another page, or its first data: not every line or pin that comes and goes (that zoomed you back out)
+        return "\(String(describing: route))|\(tab.rawValue)|\(s.frame.isEmpty)"
     }
 
-    private func apply(_ f: Store.MapFocus, quick: Bool = false) {
+    private func apply(_ f: Store.MapFocus, quick: Bool = false, keepUser: Bool = false) {
         if covered { pendingFocus = f; return }
+        if !keepUser { userMoved = false }
         let r: MKMapRect?
         switch f {
         case .fit:
@@ -481,6 +489,7 @@ struct FlightMap: View {
         }
         guard let r else { return }
         want = r
+        autoAt = Date().addingTimeInterval(quick ? 0.45 : 1.1)
         withAnimation(.easeInOut(duration: quick ? 0.45 : 1.1)) { camera = .rect(r) }
     }
 
@@ -523,7 +532,9 @@ struct FlightMap: View {
     private var pointsPerMeter: CGFloat {
         guard !seen.isNull, seen.size.height > 0 else { return 0 }
         let lat = MKMapPoint(x: seen.midX, y: seen.midY).coordinate.latitude
-        return screen.height / CGFloat(seen.size.height * MKMetersPerMapPointAtLatitude(lat))
+        let v = screen.height / CGFloat(seen.size.height * MKMetersPerMapPointAtLatitude(lat))
+        // in steps (about 19% apart), so the lines are only restyled when the zoom really changed
+        return v > 0 ? CGFloat(pow(2, (log2(Double(v)) * 4).rounded() / 4)) : 0
     }
 
     /// the names worth writing at this height: runways and terminals first, then taxiways, then gates
@@ -536,7 +547,7 @@ struct FlightMap: View {
             case .gate: return camDist < 3_500
             }
         }.filter { box.contains(MKMapPoint($0.at)) }
-        return Array(ok.prefix(160))
+        return Array(ok.prefix(110))
     }
 
     /// The whole map's rectangle (same shape as the screen) that puts the points in the open area
