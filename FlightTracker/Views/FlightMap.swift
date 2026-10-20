@@ -325,7 +325,8 @@ struct FlightMap: View {
             layoutContent
             pinContent(sc)
             surfaceContent
-            ForEach(sc.planes) { pl in
+            // when ground radar shows your flight (the blue one with its callsign), it stands in for the plain marker
+            ForEach(sc.planes.filter { !(surfHasMine && $0.id != "inbound") }) { pl in
                 Annotation("", coordinate: pl.coordinate, anchor: .center) {
                     OutlinedPlane(size: pl.size, color: pl.color, heading: pl.heading)
                 }
@@ -433,6 +434,8 @@ struct FlightMap: View {
                 .annotationTitles(.hidden)
         }
     }
+
+    private var surfHasMine: Bool { camDist < 25_000 && surf.contains { $0["mine"].bool && $0["lat"].double != nil } }
 
     /// surface targets with a position
     private var surfTargets: [(CLLocationCoordinate2D, JSON)] {
