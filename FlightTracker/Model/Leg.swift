@@ -331,15 +331,19 @@ extension StatusLine {
         // the web app's words: the gate, the slot and how late it makes the takeoff, and what's holding it
         let to = e.program ?? leg.arr.code
         let progs = leg.nas.filter { ["gdp", "gs"].contains($0["kind"].string ?? "") }
-        let prog = progs.first { $0["airport"].string == to } ?? progs.first
-        let why = prog?["reason"].string.map { " for \($0.lowercased())" } ?? ""
+        // a ground stop outranks the delay program behind it (it's what's holding you now): named, and red like its card
+        let prog = progs.first { $0["airport"].string == to && $0["kind"].string == "gs" } ?? progs.first { $0["airport"].string == to }
+            ?? progs.first { $0["kind"].string == "gs" } ?? progs.first
+        let words = ["rwy": "runway", "wx": "weather", "vol": "volume", "equip": "equipment", "tm": "traffic management"]
+        let why = prog?["reason"].string.map { " for \(words[$0.lowercased()] ?? $0.lowercased())" } ?? ""
         let held = prog?["kind"].string == "gs" ? "by a ground stop" : "by a ground delay program"
         let late = leg.off.scheduled.map { Int((e.at.timeIntervalSince($0) / 60).rounded()) }
         let dm = leg.out.lateMinutes ?? 0
         let gate = leg.phase == "taxi_out" || !leg.outKnown ? "" : dm >= 5 ? "Gate \(Fmt.span(Double(dm * 60))) late. " : "Gate on time. "
         let slot = "Takeoff slot (EDCT) \(Fmt.time(e.at, leg.dep.timeZone))" + (late.map { $0 >= 1 ? ", \(Fmt.span(Double($0 * 60))) late" : "" } ?? "") + ". "
         // amber, not red: it's a hold, not a failure (red stays red)
-        return StatusLine(head: head, sub: gate + slot + "Departures to \(to) are held \(held)\(why).", tone: tone == .red ? .red : Th.amber)
+        let gs = prog?["kind"].string == "gs"
+        return StatusLine(head: head, sub: gate + slot + "Departures to \(to) are held \(held)\(why).", tone: gs || tone == Th.red ? Th.red : Th.amber)
     }
 }
 
