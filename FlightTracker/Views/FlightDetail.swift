@@ -175,7 +175,7 @@ struct FlightPage: View {
     private func aero() async {
         aeroText = "Asking AeroAPI…"
         do {
-            let d = try await API.post("api/aero/\(leg.id)")
+            let d = try await API.post("api/aero/\(leg.id)", timeout: 50)
             aeroText = "AeroAPI: " + (d["status"].string ?? "answered") + (d["tail"].string.map { " · " + $0 } ?? "")
             try? await Task.sleep(for: .seconds(1.5))
             await store.loadDetail(leg.id)

@@ -45,7 +45,7 @@ enum API {
         var req = URLRequest(url: u, timeoutInterval: timeout)
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         do {
-            let (data, resp) = try await session.data(for: req)
+            let (data, resp) = try await dataRetrying(req)
             let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
             guard (200..<300).contains(code) else { throw Failure.http(code) }
             let j = try JSON.parse(data)
@@ -61,16 +61,30 @@ enum API {
 
 extension API {
     /// POST (an action, like refreshing a flight). -> the answer, or throws.
-    static func post(_ path: String, body: [String: Any] = [:]) async throws -> JSON {
+    static func post(_ path: String, body: [String: Any] = [:], timeout: TimeInterval = 20) async throws -> JSON {
         guard let u = url(path) else { throw Failure.noServer }
-        var req = URLRequest(url: u, timeoutInterval: 20)
+        var req = URLRequest(url: u, timeoutInterval: timeout)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, resp) = try await session.data(for: req)
+        let (data, resp) = try await dataRetrying(req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(code) else { throw Failure.http(code) }
         return (try? JSON.parse(data)) ?? .null
+    }
+}
+
+extension API {
+    /// One request, tried again once when the connection drops under it ("The network connection was
+    /// lost": a kept-alive connection the network or a proxy had already closed, or a Wi-Fi/cellular
+    /// handoff). The add-on answers a repeated paid check from the first one, so a retry costs nothing.
+    static func dataRetrying(_ req: URLRequest) async throws -> (Data, URLResponse) {
+        do {
+            return try await session.data(for: req)
+        } catch let e as URLError where e.code == .networkConnectionLost {
+            try await Task.sleep(for: .milliseconds(400))
+            return try await session.data(for: req)
+        }
     }
 }
 
