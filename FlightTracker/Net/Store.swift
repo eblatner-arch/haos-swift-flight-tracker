@@ -119,6 +119,16 @@ final class Store {
             "watching": .bool(true), "tail_count": h["tail_count"],
         ]
         if n == 0, !parent.j["inbound_live"].isNull { o["live"] = parent.j["inbound_live"] }
+        // the FAA's programs at its two airports: your flight's (it shares one of them) and the
+        // airports-status list, once each
+        let codes = Set([Airport(j: h["origin"]).code, Airport(j: h["destination"]).code])
+        var nas: [JSON] = [], keys = Set<String>()
+        let all = parent.nas + airportsStatus["airports"].array.filter { codes.contains($0["code"].string ?? "") }.flatMap { $0["items"].array }
+        for x in all where codes.contains(x["airport"].string ?? "") {
+            let k = x["key"].string ?? "\(x["airport"].string ?? "")|\(x["kind"].string ?? "")|\(x["label"].string ?? "")"
+            if keys.insert(k).inserted { nas.append(x) }
+        }
+        o["nas"] = .array(nas)
         // its turn: from the airplane reaching the gate before it to this leg's departure
         if let before = prior.first, let inB = Times(before["times"]["in"]).best, let outB = Times(t["out"]).best {
             o["turn"] = .number((outB.timeIntervalSince(inB) / 60).rounded())

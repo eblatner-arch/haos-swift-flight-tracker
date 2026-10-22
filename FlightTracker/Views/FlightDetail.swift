@@ -48,10 +48,12 @@ struct AircraftLegView: View {
         }
         .task(id: id) {
             await store.loadRotation(id)
+            await store.loadAirports()   // the FAA programs at its airports (Good to Know, the banner)
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(30))
                 if Task.isCancelled { break }
                 await store.loadRotation(id)
+                await store.loadAirports()
             }
         }
     }
