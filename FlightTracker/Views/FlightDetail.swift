@@ -617,7 +617,7 @@ struct TimesCard: View {
             let who = kind == "Scheduled" ? "" : (src[k][kind == "Actual" ? "actual" : "estimated"].string ?? leg.j["source"].string ?? "FlightAware")
             out.append(RowData(id: k, label: label, value: Fmt.time(v, tz), tone: kind == "Scheduled" ? nil : Th.lateTone(x.lateMinutes), src: kind + (who.isEmpty ? "" : " · \(who)")))
             if k == "off", let e = leg.edct {
-                out.append(RowData(id: "edct", label: "EDCT", value: Fmt.time(e.at, leg.dep.timeZone), tone: Th.amber, src: "FAA" + (e.program.map { " · \($0) program" } ?? "")))
+                out.append(RowData(id: "edct", label: "EDCT", value: Fmt.time(e.at, leg.dep.timeZone), tone: Th.amber, src: (["TBFM": "TBFM", "tower": "Tower (TFDM)", "clearance": "Datalink", "flight plan": "Flight plan"][leg.flight["swim"]["edct_src"].string ?? ""] ?? "FAA") + (e.program.map { " · \($0) program" } ?? "")))
             }
         }
         return out
@@ -714,7 +714,7 @@ private struct DetailsKV: View {
             ("Distance", f["distance_nm"].double.map { "\(Int($0)) nm" }),
             ("Live", leg.live.map { "\(Int($0.altitude ?? 0)) ft · \(Int($0.speed ?? 0)) kt · \($0.source ?? "adsb.lol")" }),
             ("Metering (TBFM)", tbfm),
-            ("EDCT from", ["TBFM": "TBFM (metering)", "flight plan": "the refiled flight plan (a slot swap)", "clearance": "the datalink clearance"][f["swim"]["edct_src"].string ?? ""]),
+            ("EDCT from", ["TBFM": "TBFM (metering)", "flight plan": "the refiled flight plan (a slot swap)", "clearance": "the datalink clearance", "tower": "the departure tower's system (its takeoff estimate + 5 min)"][f["swim"]["edct_src"].string ?? ""]),
             ("Data from", leg.j["source"].string),
             ("Updated", leg.j["updated"].date.map { Fmt.ago($0) }),
             ("Calendar", leg.j["summary"].string),

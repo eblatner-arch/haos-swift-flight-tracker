@@ -7,7 +7,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.10"
-    MARKETING_VERSION: "0.10.17"
+    MARKETING_VERSION: "0.10.18"
     CURRENT_PROJECT_VERSION: "1"
     DEVELOPMENT_TEAM: ""          # pick your team in Xcode (Signing & Capabilities)
     CODE_SIGN_STYLE: Automatic
